@@ -190,3 +190,7 @@ Server restart →  cleanOrphanedArmorStands() in onEnable() cleans up leftovers
 ## 📝 Getting Skull Textures
 
 Go to [minecraft-heads.com](https://minecraft-heads.com), find the head you want and copy the **"Value"** field into `skull.texture`.
+
+
+## 📣 Important:
+**This plugin was created using AI, but I ran extensive tests to ensure it is 100% functional in terms of both features and performance.**
