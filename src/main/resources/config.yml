@@ -99,7 +99,7 @@ holograms:
     skull:
       enabled: true
       # Base64 texture (get it from minecraft-heads.com — copy the "Value" field)
-      texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzgwNWE1ZjkzMTE2N2UxNjYxZTkzNjFkNzk5YzAyNmRkMDJkODJhYzNlNThlZDQxNThkOTlhYmUxMGQ0NiJ9fX0="
+      texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMjhkYzNjODQ0OTFjNGZmMTAzZGU2ZWEwMTg4MGUyZDgzNDMyY2Q0ODc4Yjg0ZDZiNDMyNTNjYzUxZmQ5NzhlNyJ9fX0="
       # Initial head angle (0 = north, 90 = east, 180 = south, 270 = west)
       head-yaw: 0.0
       # Extra height above the last line (increase if skull appears between lines)
@@ -173,7 +173,7 @@ holograms:
 
     skull:
       enabled: true
-      texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzgwNWE1ZjkzMTE2N2UxNjYxZTkzNjFkNzk5YzAyNmRkMDJkODJhYzNlNThlZDQxNThkOTlhYmUxMGQ0NiJ9fX0="
+      texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNWI4NWUyOWYyOWVjOWE5MGU0ODJlYTViODM5MWJjYjQ1NjBiYmFlMGRjZDE1ZDdjZTFkODYwMTZiNDM1NmU5OCJ9fX0="
       head-yaw: 45.0
       rotation:
         enabled: false
