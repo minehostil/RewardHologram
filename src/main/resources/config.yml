@@ -1,0 +1,187 @@
+# ============================================================
+#                   RewardHologram Config
+# ============================================================
+
+# Global settings
+settings:
+  # Debug mode — logs extra info to console
+  debug: false
+  # Cooldown in milliseconds between allowed clicks per player (prevents spam)
+  # 500ms = half a second, 1000ms = 1 second
+  click-cooldown-ms: 500
+
+# ============================================================
+# Reward holograms
+# You can create as many as you want with unique IDs
+# ============================================================
+holograms:
+
+  daily_reward:
+    # Spawn probability (0.0 - 100.0) each time the interval is evaluated
+    chance: 30.0
+
+    # Seconds between each evaluation per player
+    interval: 600
+
+    # Seconds until the hologram disappears if not claimed
+    despawn-after: 20
+
+    # Position offset relative to the player (in front of them)
+    offset:
+      x: 0.0
+      y: 1.5
+      z: 2.5
+
+    # Bobbing animation (up and down movement)
+    bobbing:
+      enabled: true
+      # Amplitude in blocks (how much it moves up/down)
+      amplitude: 0.15
+      # Animation speed (higher = faster)
+      speed: 0.05
+
+    # Spacing between hologram lines in blocks (default 0.28)
+    line-spacing: 0.28
+
+    # Click type to claim: RIGHT (right-click), LEFT (left-click), BOTH (either)
+    click-type: RIGHT
+
+    # Hologram lines — supports & color codes AND hex colors &#RRGGBB
+    lines:
+      - "&#FFD700&l✦ DAILY REWARD ✦"
+      - "&eClick to &aclaim"
+      - "�BFFF&7Double XP for 10 minutes"
+      - "&bJust for you!"
+
+    # Reward list with individual chances (0.0 - 100.0)
+    rewards:
+      # How many rewards to pick from the list
+      # -1 = evaluate all by their individual chance
+      #  1 = pick 1 at random and evaluate its chance
+      #  2 = pick 2 at random and evaluate their chances
+      pick: -1
+      list:
+        - command: "give %player% diamond 3"
+          chance: 100.0   # Always given
+        - command: "effect give %player% speed 600 1"
+          chance: 50.0    # 50% probability
+        - command: "give %player% emerald 1"
+          chance: 25.0    # 25% probability
+
+    # Chat message when the hologram appears (%player% available, "" to disable)
+    appear-message: "&6&l[Reward] &eYou have a reward available! Look in front of you."
+
+    # Chat message when the player claims the reward
+    claim-message: "&a&l[Reward] &fYou claimed your daily reward! &7Come back in 10 minutes."
+
+    # Title shown when the hologram appears
+    title:
+      enabled: true
+      title: "&6&l✦ REWARD ✦"
+      subtitle: "&eA reward appeared in front of you"
+      # Times in ticks (20 ticks = 1 second)
+      fade-in: 10
+      stay: 60
+      fade-out: 20
+
+    # Sound played when the hologram appears
+    # Sound list: https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Sound.html
+    sound:
+      enabled: true
+      # Sound name (without the minecraft: prefix)
+      name: "ENTITY_EXPERIENCE_ORB_PICKUP"
+      # Volume (0.0 - 1.0)
+      volume: 1.0
+      # Pitch (0.5 = low, 1.0 = normal, 2.0 = high)
+      pitch: 1.2
+
+    # Custom skull at the top of the hologram
+    skull:
+      enabled: true
+      # Base64 texture (get it from minecraft-heads.com — copy the "Value" field)
+      texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzgwNWE1ZjkzMTE2N2UxNjYxZTkzNjFkNzk5YzAyNmRkMDJkODJhYzNlNThlZDQxNThkOTlhYmUxMGQ0NiJ9fX0="
+      # Initial head angle (0 = north, 90 = east, 180 = south, 270 = west)
+      head-yaw: 0.0
+      # Extra height above the last line (increase if skull appears between lines)
+      height-offset: 0.7
+      rotation:
+        # Automatic continuous rotation
+        enabled: true
+        # Degrees per tick — full rotation (360°) at speed 2.0 takes ~9 seconds
+        speed: 2.0
+
+    # Sound played when the reward is claimed
+    claim-sound:
+      enabled: true
+      name: "ENTITY_PLAYER_LEVELUP"
+      volume: 1.0
+      pitch: 1.5
+
+  bonus_reward:
+    chance: 10.0
+    interval: 1800
+    despawn-after: 15
+
+    offset:
+      x: 0.0
+      y: 1.8
+      z: 2.5
+
+    bobbing:
+      enabled: true
+      amplitude: 0.20
+      speed: 0.08
+
+    line-spacing: 0.28
+
+    # BOTH allows claiming with either right or left click
+    click-type: BOTH
+
+    lines:
+      - "&#FF00FF&l★ SPECIAL BONUS ★"
+      - "&fClick to claim"
+      - "�FF7F&a+500 Coins"
+
+    rewards:
+      # Pick 1 reward at random from the list
+      pick: 1
+      list:
+        - command: "eco give %player% 500"
+          chance: 100.0
+        - command: "eco give %player% 250"
+          chance: 40.0   # Extra 250 coins with 40% chance
+        - command: "broadcast &a%player% &fgot a special bonus!"
+          chance: 100.0
+
+    appear-message: "&d&l[Bonus] &fYou have a special bonus available!"
+
+    claim-message: "&a&l[Bonus] &fYou claimed &a500 coins&f! Thanks for playing."
+
+    title:
+      enabled: true
+      title: "&d&l★ SPECIAL BONUS ★"
+      subtitle: "&fClick to claim 500 coins!"
+      fade-in: 10
+      stay: 60
+      fade-out: 20
+
+    sound:
+      enabled: true
+      name: "UI_TOAST_CHALLENGE_COMPLETE"
+      volume: 1.0
+      pitch: 1.0
+
+    skull:
+      enabled: true
+      texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzgwNWE1ZjkzMTE2N2UxNjYxZTkzNjFkNzk5YzAyNmRkMDJkODJhYzNlNThlZDQxNThkOTlhYmUxMGQ0NiJ9fX0="
+      head-yaw: 45.0
+      rotation:
+        enabled: false
+        speed: 3.0
+      height-offset: 0.7
+
+    claim-sound:
+      enabled: true
+      name: "ENTITY_PLAYER_LEVELUP"
+      volume: 1.0
+      pitch: 1.0
