@@ -1,6 +1,6 @@
 # RewardHologram 🎁
 
-A Paper 1.21.11 plugin that displays per-player floating reward holograms with bobbing animation, skull rotation, individual reward chances, and cooldowns that persist across server restarts.
+A Paper +1.21.11 plugin that displays per-player floating reward holograms with bobbing animation, skull rotation, individual reward chances, and cooldowns that persist across server restarts.
 
 ## ✨ Features
 
@@ -13,7 +13,7 @@ A Paper 1.21.11 plugin that displays per-player floating reward holograms with b
 - **Configurable click type** — `RIGHT`, `LEFT`, or `BOTH` per hologram
 - **Click cooldown** — prevents reward spam
 - **Persistent cooldowns** — intervals are respected across server restarts via `cooldowns.yml`
-- **No external dependencies** — only requires Paper 1.21.11
+- **No external dependencies** — only requires Paper +1.21.11
 - **Auto cleanup** — removes orphaned armor stands on startup and when players disconnect
 - **Admin commands** — manual spawn/remove, live reload and list
 
@@ -21,7 +21,7 @@ A Paper 1.21.11 plugin that displays per-player floating reward holograms with b
 
 | Dependency | Type | Link |
 |---|---|---|
-| Paper 1.21.11 | Required | [papermc.io](https://papermc.io) |
+| Paper +1.21.11 | Required | [papermc.io](https://papermc.io) |
 
 No additional plugins required.
 
