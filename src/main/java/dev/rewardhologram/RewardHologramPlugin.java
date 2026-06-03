@@ -1,0 +1,124 @@
+package dev.rewardhologram;
+
+import dev.rewardhologram.listener.HologramListener;
+import dev.rewardhologram.manager.HologramManager;
+import dev.rewardhologram.task.HologramTask;
+import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class RewardHologramPlugin extends JavaPlugin {
+
+    private HologramManager hologramManager;
+    private NamespacedKey ownerKey;
+    private NamespacedKey hologramIdKey;
+
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+
+        ownerKey      = new NamespacedKey(this, "hologram_owner");
+        hologramIdKey = new NamespacedKey(this, "hologram_id");
+
+        cleanOrphanedArmorStands();
+
+        hologramManager = new HologramManager(this);
+
+        getServer().getPluginManager().registerEvents(new HologramListener(this), this);
+
+        new HologramTask(this).start();
+
+        getLogger().info("RewardHologram v" + getDescription().getVersion() + " enabled.");
+        getLogger().info("Holograms loaded: " + hologramManager.getAllDefinitions().size());
+    }
+
+    @Override
+    public void onDisable() {
+        if (hologramManager != null) {
+            hologramManager.removeAll();
+            hologramManager.getCooldownManager().saveSync();
+        }
+        getLogger().info("RewardHologram disabled.");
+    }
+
+    // ─── Limpieza post-reinicio ────────────────────────────────────────────────
+
+    private void cleanOrphanedArmorStands() {
+        int removed = 0;
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (!(entity instanceof ArmorStand as)) continue;
+                String owner = as.getPersistentDataContainer()
+                        .get(ownerKey, PersistentDataType.STRING);
+                if (owner != null) { as.remove(); removed++; }
+            }
+        }
+        if (removed > 0)
+            getLogger().info("Removed " + removed + " orphaned armor stand(s) from previous session.");
+    }
+
+    // ─── Comandos ─────────────────────────────────────────────────────────────
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!command.getName().equalsIgnoreCase("rewardhologram")) return false;
+        if (!sender.hasPermission("rewardhologram.admin")) {
+            sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cYou don't have permission to do this."));
+            return true;
+        }
+
+        if (args.length == 0) { sendHelp(sender); return true; }
+
+        switch (args[0].toLowerCase()) {
+            case "reload" -> {
+                hologramManager.removeAll();
+                reloadConfig();
+                hologramManager.loadConfig();
+                sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&aRewardHologram reloaded successfully."));
+            }
+            case "list" -> {
+                sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&6Defined holograms:"));
+                hologramManager.getAllDefinitions().forEach(d ->
+                        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                                "&7- &e" + d.getId() + " &7(chance: &a" + d.getChance()
+                                + "%&7, interval: &a" + d.getInterval() + "s&7)")));
+            }
+            case "spawn" -> {
+                if (args.length < 3) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cUsage: /rh spawn <id> <player>")); return true; }
+                dev.rewardhologram.model.HologramData data = hologramManager.getDefinition(args[1]);
+                if (data == null) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cHologram &e'" + args[1] + "' &cdoes not exist. Use &e/rh list &cto see available ones.")); return true; }
+                org.bukkit.entity.Player target = Bukkit.getPlayerExact(args[2]);
+                if (target == null) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cPlayer &e'" + args[2] + "' &cis not online.")); return true; }
+                hologramManager.spawnHologram(target, data);
+                sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&aHologram &e'" + args[1] + "' &aspawned for &e" + target.getName() + "&a."));
+            }
+            case "remove" -> {
+                if (args.length < 3) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cUsage: /rh remove <id> <player>")); return true; }
+                if (hologramManager.getDefinition(args[1]) == null) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cHologram &e'" + args[1] + "' &cdoes not exist. Use &e/rh list &cto see available ones.")); return true; }
+                org.bukkit.entity.Player target = Bukkit.getPlayerExact(args[2]);
+                if (target == null) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cPlayer &e'" + args[2] + "' &cis not online.")); return true; }
+                hologramManager.removeHologram(target, args[1]);
+                sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&aHologram &e'" + args[1] + "' &aremoved from &e" + target.getName() + "&a."));
+            }
+            default -> sendHelp(sender);
+        }
+        return true;
+    }
+
+    private void sendHelp(CommandSender sender) {
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&6=== RewardHologram ==="));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh reload                &7- Reload the configuration"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh list                  &7- List all defined holograms"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh spawn <id> <player>   &7- Force spawn a hologram for a player"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh remove <id> <player>  &7- Remove a player's active hologram"));
+    }
+
+    public HologramManager getHologramManager() { return hologramManager; }
+    public NamespacedKey getOwnerKey()           { return ownerKey; }
+    public NamespacedKey getHologramIdKey()      { return hologramIdKey; }
+}
