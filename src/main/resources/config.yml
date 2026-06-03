@@ -50,7 +50,7 @@ holograms:
     lines:
       - "&#FFD700&l✦ DAILY REWARD ✦"
       - "&eClick to &aclaim"
-      - "�BFFF&7Double XP for 10 minutes"
+      - "&#00BFFF&7Double XP for 10 minutes"
       - "&bJust for you!"
 
     # Reward list with individual chances (0.0 - 100.0)
@@ -140,7 +140,7 @@ holograms:
     lines:
       - "&#FF00FF&l★ SPECIAL BONUS ★"
       - "&fClick to claim"
-      - "�FF7F&a+500 Coins"
+      - "&#00FF7F&a+500 Coins"
 
     rewards:
       # Pick 1 reward at random from the list
