@@ -13,12 +13,16 @@ import java.util.*;
 public class HologramManager {
 
     private final RewardHologramPlugin plugin;
+    private final org.bukkit.NamespacedKey ownerKey;
+    private final org.bukkit.NamespacedKey hologramIdKey;
     private final Map<String, HologramData> hologramDefinitions = new LinkedHashMap<>();
     private final Map<UUID, Map<String, ActiveHologram>> activeHolograms = new HashMap<>();
     private final CooldownManager cooldownManager;
 
     public HologramManager(RewardHologramPlugin plugin) {
         this.plugin = plugin;
+        this.ownerKey = plugin.getOwnerKey();
+        this.hologramIdKey = plugin.getHologramIdKey();
         this.cooldownManager = new CooldownManager(plugin);
         loadConfig();
     }
@@ -267,7 +271,14 @@ public class HologramManager {
     // ─── Comandos / Efectos ────────────────────────────────────────────────────
 
     public void executeCommands(Player player, HologramData data) {
+        // Verificar cooldown de clic
         if (isClickOnCooldown(player.getUniqueId(), data.getId())) return;
+
+        // Verificar que el holograma ya no esté activo (fue removido en claim() antes de llegar aquí)
+        // Si por alguna razón sigue activo, no ejecutar
+        if (activeHolograms
+                .getOrDefault(player.getUniqueId(), Collections.emptyMap())
+                .containsKey(data.getId())) return;
 
         List<dev.rewardhologram.model.RewardEntry> rewards = data.getRewards();
         int pick = data.getRewardPick();
@@ -352,6 +363,41 @@ public class HologramManager {
     public Collection<HologramData> getAllDefinitions() { return hologramDefinitions.values(); }
     public HologramData getDefinition(String id) { return hologramDefinitions.get(id); }
     public CooldownManager getCooldownManager() { return cooldownManager; }
+
+    /**
+     * Elimina todos los armor stands del plugin dentro del radio dado.
+     * Busca por PDC key directamente en el mundo, así atrapa también
+     * entidades huérfanas que no estén en el mapa activeHolograms.
+     * @return cantidad de armor stands eliminados
+     */
+    public int removeNear(org.bukkit.Location center, double radius) {
+        int removed = 0;
+        double radiusSq = radius * radius;
+
+        for (org.bukkit.entity.Entity entity : center.getWorld().getNearbyEntities(center, radius, radius, radius)) {
+            if (!(entity instanceof org.bukkit.entity.ArmorStand as)) continue;
+            if (entity.getLocation().distanceSquared(center) > radiusSq) continue;
+
+            String ownerStr = as.getPersistentDataContainer()
+                    .get(ownerKey, org.bukkit.persistence.PersistentDataType.STRING);
+            String hologramId = as.getPersistentDataContainer()
+                    .get(hologramIdKey, org.bukkit.persistence.PersistentDataType.STRING);
+
+            if (ownerStr == null || hologramId == null) continue;
+
+            // Eliminar del mapa activo si existe
+            try {
+                UUID ownerUuid = UUID.fromString(ownerStr);
+                Map<String, ActiveHologram> playerActives = activeHolograms.get(ownerUuid);
+                if (playerActives != null) playerActives.remove(hologramId);
+            } catch (IllegalArgumentException ignored) {}
+
+            as.remove();
+            removed++;
+        }
+
+        return removed;
+    }
 
     private HologramData.ClickType parseClickType(String value) {
         try {
