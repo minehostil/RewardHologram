@@ -105,7 +105,19 @@ public class RealHologram {
 
     public void destroy(ActiveHologram active) {
         active.getRealEntities().forEach(as -> {
-            if (as != null && !as.isDead()) as.remove();
+            if (as == null) return;
+            // Intentar eliminar por referencia directa
+            if (!as.isDead()) {
+                as.remove();
+            } else {
+                // Si la referencia dice que está muerta pero visualmente sigue ahí,
+                // buscarla por UUID en el mundo y eliminarla
+                try {
+                    org.bukkit.entity.Entity entity =
+                            org.bukkit.Bukkit.getEntity(as.getUniqueId());
+                    if (entity != null && !entity.isDead()) entity.remove();
+                } catch (Exception ignored) {}
+            }
         });
     }
 
