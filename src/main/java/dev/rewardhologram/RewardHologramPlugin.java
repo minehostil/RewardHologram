@@ -216,6 +216,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
     }
 
     // ─── Getters ──────────────────────────────────────────────────────────────
+    public HologramManager getHologramManager() { return hologramManager; }
     public NamespacedKey getOwnerKey()           { return ownerKey; }
     public NamespacedKey getHologramIdKey()      { return hologramIdKey; }
 }
