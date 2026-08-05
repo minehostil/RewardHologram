@@ -7,6 +7,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -98,6 +99,17 @@ public class HologramListener implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
+        plugin.getHologramManager().removeAllForPlayer(event.getPlayer());
+    }
+
+    // ─── Limpiar al cambiar de mundo ──────────────────────────────────────────
+
+    @EventHandler
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        // Al cambiar de mundo los chunks del mundo anterior se descargan,
+        // dejando las entidades del holograma huérfanas e inamovibles.
+        // Eliminarlos inmediatamente evita hologramas que no desaparecen
+        // y que se puedan reclamar infinitamente.
         plugin.getHologramManager().removeAllForPlayer(event.getPlayer());
     }
 
