@@ -7,12 +7,19 @@ import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class RewardHologramPlugin extends JavaPlugin {
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
 
     private HologramManager hologramManager;
     private NamespacedKey ownerKey;
@@ -32,6 +39,10 @@ public class RewardHologramPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new HologramListener(this), this);
 
         new HologramTask(this).start();
+
+        // Registrar tab completer
+        if (getCommand("rewardhologram") != null)
+            getCommand("rewardhologram").setTabCompleter(this);
 
         getLogger().info("RewardHologram v" + getDescription().getVersion() + " enabled.");
         getLogger().info("Holograms loaded: " + hologramManager.getAllDefinitions().size());
@@ -147,7 +158,64 @@ public class RewardHologramPlugin extends JavaPlugin {
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh removenear [radius]      &7- Remove all hologram stands within radius (default 5)"));
     }
 
-    public HologramManager getHologramManager() { return hologramManager; }
+    // ─── Tab Completer ────────────────────────────────────────────────────────
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command,
+                                      String alias, String[] args) {
+        if (!sender.hasPermission("rewardhologram.admin")) return List.of();
+
+        List<String> completions = new ArrayList<>();
+        String current = args[args.length - 1].toLowerCase();
+
+        if (args.length == 1) {
+            // Primer argumento — subcomandos
+            List<String> subcommands = Arrays.asList(
+                    "reload", "list", "spawn", "remove", "removenear");
+            return filter(subcommands, current);
+        }
+
+        if (args.length == 2) {
+            switch (args[0].toLowerCase()) {
+                case "spawn", "remove" -> {
+                    // Segundo argumento — IDs de hologramas
+                    List<String> ids = hologramManager.getAllDefinitions()
+                            .stream()
+                            .map(dev.rewardhologram.model.HologramData::getId)
+                            .collect(Collectors.toList());
+                    return filter(ids, current);
+                }
+                case "removenear" -> {
+                    // Segundo argumento — radio sugerido
+                    return filter(Arrays.asList("3", "5", "10", "15", "20"), current);
+                }
+            }
+        }
+
+        if (args.length == 3) {
+            switch (args[0].toLowerCase()) {
+                case "spawn", "remove" -> {
+                    // Tercer argumento — jugadores online
+                    List<String> players = Bukkit.getOnlinePlayers()
+                            .stream()
+                            .map(Player::getName)
+                            .collect(Collectors.toList());
+                    return filter(players, current);
+                }
+            }
+        }
+
+        return completions;
+    }
+
+    /** Filtra una lista de opciones según el texto que el jugador lleva escrito. */
+    private List<String> filter(List<String> options, String current) {
+        return options.stream()
+                .filter(o -> o.toLowerCase().startsWith(current))
+                .collect(Collectors.toList());
+    }
+
+    // ─── Getters ──────────────────────────────────────────────────────────────
     public NamespacedKey getOwnerKey()           { return ownerKey; }
     public NamespacedKey getHologramIdKey()      { return hologramIdKey; }
 }
