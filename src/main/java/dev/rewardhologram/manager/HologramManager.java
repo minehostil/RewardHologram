@@ -139,6 +139,14 @@ public class HologramManager {
         activeHolograms.computeIfAbsent(uuid, k -> new HashMap<>()).put(data.getId(), active);
         cooldownManager.setLastSpawn(uuid, data.getId(), System.currentTimeMillis());
 
+        // Anclar los chunks donde están las entidades para que no se descarguen
+        // mientras el holograma esté activo, evitando entidades fantasma
+        active.getRealEntities().forEach(as -> {
+            if (as != null && !as.isDead()) {
+                as.getLocation().getChunk().addPluginChunkTicket(plugin);
+            }
+        });
+
         sendAppearEffects(player, data);
 
         // Guardar referencia al active para verificar en el despawn
@@ -170,6 +178,13 @@ public class HologramManager {
         ActiveHologram active = playerActives.remove(hologramId);
         if (active == null) return;
 
+        // Liberar chunk tickets antes de destruir
+        active.getRealEntities().forEach(as -> {
+            if (as != null && !as.isDead()) {
+                as.getLocation().getChunk().removePluginChunkTicket(plugin);
+            }
+        });
+
         HologramData data = hologramDefinitions.get(hologramId);
         if (data != null) new RealHologram(plugin, player, data).destroy(active);
     }
@@ -180,7 +195,10 @@ public class HologramManager {
         if (actives != null) {
             actives.values().forEach(active ->
                     active.getRealEntities().forEach(as -> {
-                        if (as != null && !as.isDead()) as.remove();
+                        if (as != null && !as.isDead()) {
+                            as.getLocation().getChunk().removePluginChunkTicket(plugin);
+                            as.remove();
+                        }
                     })
             );
         }
@@ -201,7 +219,14 @@ public class HologramManager {
                 if (actives != null) {
                     actives.values().forEach(active ->
                             active.getRealEntities().forEach(as -> {
-                                if (as != null && !as.isDead()) as.remove();
+                                if (as != null && !as.isDead()) {
+                                    // Liberar chunk ticket antes de eliminar
+                                    try {
+                                        as.getLocation().getChunk()
+                                                .removePluginChunkTicket(plugin);
+                                    } catch (Exception ignored) {}
+                                    as.remove();
+                                }
                             })
                     );
                 }
