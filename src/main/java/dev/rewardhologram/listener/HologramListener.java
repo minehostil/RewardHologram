@@ -104,7 +104,10 @@ public class HologramListener implements Listener {
     // ─── Helper ───────────────────────────────────────────────────────────────
 
     private void claim(Player player, HologramData data, String hologramId) {
-        plugin.getHologramManager().executeCommands(player, data);
+        // Remover del mapa ANTES de ejecutar comandos.
+        // Esto garantiza que aunque falle el destroy o el jugador haga clic
+        // múltiples veces muy rápido, las recompensas solo se dan una vez.
         plugin.getHologramManager().removeHologram(player, hologramId);
+        plugin.getHologramManager().executeCommands(player, data);
     }
 }
