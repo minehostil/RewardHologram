@@ -105,6 +105,34 @@ public class RewardHologramPlugin extends JavaPlugin {
                 hologramManager.removeHologram(target, args[1]);
                 sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&aHologram &e'" + args[1] + "' &aremoved from &e" + target.getName() + "&a."));
             }
+            case "removenear" -> {
+                // Solo jugadores pueden usar este comando (necesita posición)
+                if (!(sender instanceof org.bukkit.entity.Player admin)) {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cThis command can only be used by players."));
+                    return true;
+                }
+
+                // Radio opcional — default 5 bloques
+                double radius = 5.0;
+                if (args.length >= 2) {
+                    try {
+                        radius = Double.parseDouble(args[1]);
+                        if (radius <= 0) throw new NumberFormatException();
+                    } catch (NumberFormatException e) {
+                        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cInvalid radius. Usage: /rh removenear [radius]"));
+                        return true;
+                    }
+                }
+
+                int removed = hologramManager.removeNear(admin.getLocation(), radius);
+                if (removed == 0) {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&eNo hologram armor stands found within &a" + radius + " &eblocks."));
+                } else {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&aRemoved &e" + removed + " &ahologram armor stand(s) within &e" + radius + " &ablocks."));
+                }
+            }
             default -> sendHelp(sender);
         }
         return true;
@@ -112,10 +140,11 @@ public class RewardHologramPlugin extends JavaPlugin {
 
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&6=== RewardHologram ==="));
-        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh reload                &7- Reload the configuration"));
-        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh list                  &7- List all defined holograms"));
-        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh spawn <id> <player>   &7- Force spawn a hologram for a player"));
-        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh remove <id> <player>  &7- Remove a player's active hologram"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh reload                   &7- Reload the configuration"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh list                     &7- List all defined holograms"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh spawn <id> <player>      &7- Force spawn a hologram for a player"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh remove <id> <player>     &7- Remove a player's active hologram"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh removenear [radius]      &7- Remove all hologram stands within radius (default 5)"));
     }
 
     public HologramManager getHologramManager() { return hologramManager; }
