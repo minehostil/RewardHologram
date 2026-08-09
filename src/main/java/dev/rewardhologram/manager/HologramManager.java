@@ -424,7 +424,29 @@ public class HologramManager {
         return removed;
     }
 
-    private HologramData.ClickType parseClickType(String value) {
+    /**
+     * Devuelve una lista de info de hologramas activos:
+     * ownerName, hologramId, y la ubicación del primer armor stand.
+     */
+    public List<ActiveHologramInfo> getActiveList() {
+        List<ActiveHologramInfo> result = new ArrayList<>();
+        for (Map.Entry<UUID, Map<String, ActiveHologram>> playerEntry : activeHolograms.entrySet()) {
+            String ownerName = Bukkit.getOfflinePlayer(playerEntry.getKey()).getName();
+            if (ownerName == null) ownerName = playerEntry.getKey().toString().substring(0, 8);
+            for (Map.Entry<String, ActiveHologram> holoEntry : playerEntry.getValue().entrySet()) {
+                ActiveHologram active = holoEntry.getValue();
+                org.bukkit.Location loc = null;
+                if (!active.getRealEntities().isEmpty()) {
+                    org.bukkit.entity.ArmorStand as = active.getRealEntities().get(0);
+                    if (as != null && !as.isDead()) loc = as.getLocation();
+                }
+                result.add(new ActiveHologramInfo(ownerName, holoEntry.getKey(), loc));
+            }
+        }
+        return result;
+    }
+
+    public record ActiveHologramInfo(String ownerName, String hologramId, org.bukkit.Location location) {}
         try {
             return HologramData.ClickType.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
