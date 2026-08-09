@@ -2,6 +2,7 @@ package dev.rewardhologram;
 
 import dev.rewardhologram.listener.HologramListener;
 import dev.rewardhologram.manager.HologramManager;
+import dev.rewardhologram.model.ActiveHologramInfo;
 import dev.rewardhologram.task.HologramTask;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
@@ -145,7 +146,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                 }
             }
             case "active" -> {
-                List<HologramManager.ActiveHologramInfo> actives =
+                List<ActiveHologramInfo> actives =
                         hologramManager.getActiveList();
                 if (actives.isEmpty()) {
                     sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
@@ -177,7 +178,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                             "&cUsage: /rh tpto <player> <id>"));
                     return true;
                 }
-                HologramManager.ActiveHologramInfo found = hologramManager.getActiveList()
+                ActiveHologramInfo found = hologramManager.getActiveList()
                         .stream()
                         .filter(i -> i.ownerName() != null
                                 && i.ownerName().equalsIgnoreCase(args[1])
@@ -240,7 +241,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                     // Jugadores que tienen hologramas activos
                     List<String> owners = hologramManager.getActiveList()
                             .stream()
-                            .map(HologramManager.ActiveHologramInfo::ownerName)
+                            .map(ActiveHologramInfo::ownerName)
                             .filter(n -> n != null)
                             .distinct()
                             .collect(Collectors.toList());
@@ -268,7 +269,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                             .stream()
                             .filter(i -> i.ownerName() != null
                                     && i.ownerName().equalsIgnoreCase(selectedOwner))
-                            .map(HologramManager.ActiveHologramInfo::hologramId)
+                            .map(ActiveHologramInfo::hologramId)
                             .collect(Collectors.toList());
                     return filter(ids, current);
                 }
