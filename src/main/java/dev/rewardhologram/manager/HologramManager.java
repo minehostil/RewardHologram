@@ -3,6 +3,7 @@ package dev.rewardhologram.manager;
 import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.hologram.RealHologram;
 import dev.rewardhologram.model.ActiveHologram;
+import dev.rewardhologram.model.ActiveHologramInfo;
 import dev.rewardhologram.model.HologramData;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
@@ -445,8 +446,6 @@ public class HologramManager {
         }
         return result;
     }
-
-    public record ActiveHologramInfo(String ownerName, String hologramId, org.bukkit.Location location) {}
         try {
             return HologramData.ClickType.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
