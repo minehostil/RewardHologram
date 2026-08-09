@@ -1,6 +1,6 @@
 # RewardHologram 🎁
 
-A Paper +1.21.11 plugin that displays per-player floating reward holograms with bobbing animation, skull rotation, individual reward chances, and cooldowns that persist across server restarts.
+A Paper 1.21.11 plugin that displays per-player floating reward holograms with bobbing animation, skull rotation, individual reward chances, and cooldowns that persist across server restarts.
 
 ## ✨ Features
 
@@ -13,15 +13,17 @@ A Paper +1.21.11 plugin that displays per-player floating reward holograms with 
 - **Configurable click type** — `RIGHT`, `LEFT`, or `BOTH` per hologram
 - **Click cooldown** — prevents reward spam
 - **Persistent cooldowns** — intervals are respected across server restarts via `cooldowns.yml`
-- **No external dependencies** — only requires Paper +1.21.11
-- **Auto cleanup** — removes orphaned armor stands on startup and when players disconnect
-- **Admin commands** — manual spawn/remove, live reload and list
+- **Chunk tickets** — keeps armor stand chunks loaded to prevent ghost entities when players change worlds
+- **World change cleanup** — holograms are removed immediately when a player changes worlds
+- **No external dependencies** — only requires Paper 1.21.11
+- **Auto cleanup** — removes orphaned armor stands on startup, shutdown, and when players disconnect
+- **Admin commands** — spawn/remove, active hologram list with coordinates, teleport to hologram, and more
 
 ## 📦 Dependencies
 
 | Dependency | Type | Link |
 |---|---|---|
-| Paper +1.21.11 | Required | [papermc.io](https://papermc.io) |
+| Paper 1.21.11 | Required | [papermc.io](https://papermc.io) |
 
 No additional plugins required.
 
@@ -72,7 +74,7 @@ holograms:
     lines:
       - "&#FFD700&l✦ REWARD ✦"
       - "&eClick to claim"
-      - "&#00BFFFHex blue text"
+      - "�BFFFHex blue text"
 
     # Reward list with individual chances
     rewards:
@@ -131,9 +133,24 @@ holograms:
 | Command | Permission | Description |
 |---|---|---|
 | `/rh reload` | `rewardhologram.admin` | Live reload of config.yml |
-| `/rh list` | `rewardhologram.admin` | List holograms with chance and interval |
+| `/rh list` | `rewardhologram.admin` | List defined holograms with chance and interval |
+| `/rh active` | `rewardhologram.admin` | List all currently active holograms with owner and coordinates |
+| `/rh tpto <player> <id>` | `rewardhologram.admin` | Teleport to an active hologram |
 | `/rh spawn <id> <player>` | `rewardhologram.admin` | Force-spawn a hologram for a player |
 | `/rh remove <id> <player>` | `rewardhologram.admin` | Remove a player's active hologram |
+| `/rh removenear [radius]` | `rewardhologram.admin` | Remove all hologram stands within radius (default 5 blocks) |
+
+All commands support **tab completion**. `/rh tpto` suggests only players with active holograms, then their active hologram IDs.
+
+## 🔍 Debugging Stuck Holograms
+
+If a hologram appears stuck (no animation, claimable infinitely):
+
+1. Run `/rh active` to see all active holograms with coordinates
+2. Run `/rh tpto <player> <id>` to teleport to it
+3. Run `/rh removenear 5` to force-remove it from the world
+
+These commands search the world directly by PDC key, so they catch orphaned entities that are no longer tracked by the plugin.
 
 ## 🎨 Color Support
 
@@ -141,7 +158,7 @@ holograms:
 lines:
   - "&6Orange text"             # Classic color code
   - "&#FF5733Hex red text"      # Hex color
-  - "&l&#00FFFFCyan bold text"  # Combined
+  - "&l�FFFFCyan bold text"  # Combined
 ```
 
 ## 🏆 Reward System
@@ -180,17 +197,16 @@ mvn clean package
 ## 📐 Architecture
 
 ```
-Player joins   →  CooldownManager loads cooldowns.yml
-Every second   →  HologramTask evaluates chance + interval per player
-Player clicks  →  HologramListener detects click → executeCommands → pick + chance
-Player quits   →  removeAllForPlayer() removes entities from the world
-Server restart →  cleanOrphanedArmorStands() in onEnable() cleans up leftovers
+Player joins        →  CooldownManager loads cooldowns.yml; initializes cooldowns for new players
+Every second        →  HologramTask evaluates chance + interval per online player
+Every tick          →  HologramTask ticks bobbing animation + skull rotation
+Player clicks       →  HologramListener detects click → removeHologram first → executeCommands (pick + chance)
+Player quits        →  removeAllForPlayer() releases chunk tickets and removes entities
+Player changes world→  PlayerChangedWorldEvent → removeAllForPlayer() cleans up before chunk unloads
+Server shutdown     →  removeAll() releases all chunk tickets and removes all entities
+Server startup      →  cleanOrphanedArmorStands() scans all worlds and removes leftover stands by PDC key
 ```
 
 ## 📝 Getting Skull Textures
 
 Go to [minecraft-heads.com](https://minecraft-heads.com), find the head you want and copy the **"Value"** field into `skull.texture`.
-
-
-## 📣 Important:
-**This plugin was created using AI, but I ran extensive tests to ensure it is 100% functional in terms of both features and performance.**
