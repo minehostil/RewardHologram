@@ -144,6 +144,57 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                             "&aRemoved &e" + removed + " &ahologram armor stand(s) within &e" + radius + " &ablocks."));
                 }
             }
+            case "active" -> {
+                List<HologramManager.ActiveHologramInfo> actives =
+                        hologramManager.getActiveList();
+                if (actives.isEmpty()) {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&eNo active holograms at the moment."));
+                } else {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&6Active holograms &7(" + actives.size() + "):"));
+                    actives.forEach(info -> {
+                        String loc = info.location() == null ? "&cUnknown location" :
+                                "&a" + info.location().getWorld().getName()
+                                + " &7x:&f" + (int) info.location().getX()
+                                + " &7y:&f" + (int) info.location().getY()
+                                + " &7z:&f" + (int) info.location().getZ();
+                        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                                "&7- &e" + info.hologramId()
+                                + " &7owner: &b" + info.ownerName()
+                                + " &7at " + loc));
+                    });
+                }
+            }
+            case "tpto" -> {
+                if (!(sender instanceof Player admin)) {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&cThis command can only be used by players."));
+                    return true;
+                }
+                if (args.length < 3) {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&cUsage: /rh tpto <player> <id>"));
+                    return true;
+                }
+                HologramManager.ActiveHologramInfo found = hologramManager.getActiveList()
+                        .stream()
+                        .filter(i -> i.ownerName() != null
+                                && i.ownerName().equalsIgnoreCase(args[1])
+                                && i.hologramId().equalsIgnoreCase(args[2]))
+                        .findFirst()
+                        .orElse(null);
+                if (found == null || found.location() == null) {
+                    sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                            "&cNo active hologram &e'" + args[2]
+                            + "' &cfound for player &e'" + args[1] + "'&c."));
+                    return true;
+                }
+                admin.teleport(found.location());
+                sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
+                        "&aTeleported to hologram &e'" + args[2]
+                        + "' &aowned by &e" + found.ownerName() + "&a."));
+            }
             default -> sendHelp(sender);
         }
         return true;
@@ -153,6 +204,8 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&6=== RewardHologram ==="));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh reload                   &7- Reload the configuration"));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh list                     &7- List all defined holograms"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh active                   &7- List all currently active holograms with coordinates"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh tpto <player> <id>       &7- Teleport to an active hologram"));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh spawn <id> <player>      &7- Force spawn a hologram for a player"));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh remove <id> <player>     &7- Remove a player's active hologram"));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh removenear [radius]      &7- Remove all hologram stands within radius (default 5)"));
@@ -169,24 +222,31 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
         String current = args[args.length - 1].toLowerCase();
 
         if (args.length == 1) {
-            // Primer argumento — subcomandos
             List<String> subcommands = Arrays.asList(
-                    "reload", "list", "spawn", "remove", "removenear");
+                    "reload", "list", "active", "tpto", "spawn", "remove", "removenear");
             return filter(subcommands, current);
         }
 
         if (args.length == 2) {
             switch (args[0].toLowerCase()) {
                 case "spawn", "remove" -> {
-                    // Segundo argumento — IDs de hologramas
                     List<String> ids = hologramManager.getAllDefinitions()
                             .stream()
                             .map(dev.rewardhologram.model.HologramData::getId)
                             .collect(Collectors.toList());
                     return filter(ids, current);
                 }
+                case "tpto" -> {
+                    // Jugadores que tienen hologramas activos
+                    List<String> owners = hologramManager.getActiveList()
+                            .stream()
+                            .map(HologramManager.ActiveHologramInfo::ownerName)
+                            .filter(n -> n != null)
+                            .distinct()
+                            .collect(Collectors.toList());
+                    return filter(owners, current);
+                }
                 case "removenear" -> {
-                    // Segundo argumento — radio sugerido
                     return filter(Arrays.asList("3", "5", "10", "15", "20"), current);
                 }
             }
@@ -195,12 +255,22 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
         if (args.length == 3) {
             switch (args[0].toLowerCase()) {
                 case "spawn", "remove" -> {
-                    // Tercer argumento — jugadores online
                     List<String> players = Bukkit.getOnlinePlayers()
                             .stream()
                             .map(Player::getName)
                             .collect(Collectors.toList());
                     return filter(players, current);
+                }
+                case "tpto" -> {
+                    // IDs activos del jugador seleccionado
+                    String selectedOwner = args[1];
+                    List<String> ids = hologramManager.getActiveList()
+                            .stream()
+                            .filter(i -> i.ownerName() != null
+                                    && i.ownerName().equalsIgnoreCase(selectedOwner))
+                            .map(HologramManager.ActiveHologramInfo::hologramId)
+                            .collect(Collectors.toList());
+                    return filter(ids, current);
                 }
             }
         }
