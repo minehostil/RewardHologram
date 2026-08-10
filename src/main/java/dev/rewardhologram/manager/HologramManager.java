@@ -446,6 +446,8 @@ public class HologramManager {
         }
         return result;
     }
+
+    private HologramData.ClickType parseClickType(String value) {
         try {
             return HologramData.ClickType.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
