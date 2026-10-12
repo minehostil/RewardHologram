@@ -217,7 +217,7 @@ public class HologramData {
         private ChatColor glowColor = ChatColor.WHITE;
         private boolean textShadowed = false;
         private boolean textSeeThrough = false;
-        private boolean textBackgroundTransparent = true;
+        private org.bukkit.Color textBackgroundColor = org.bukkit.Color.fromARGB(0, 0, 0, 0);
         private boolean squashEnabled = false;
         private double squashAmplitude = 0.12, squashSpeed = 0.15;
         private boolean tiltEnabled = false;
@@ -281,13 +281,13 @@ public class HologramData {
         public Builder clickType(ClickType v) { this.clickType = v; return this; }
         public Builder renderer(Renderer v) { this.renderer = v; return this; }
         public Builder display(Display.Billboard billboard, double scale,
-                               boolean glowEnabled, ChatColor glowColor,
-                               boolean shadowed, boolean seeThrough, boolean transparentBg) {
-            this.billboard = billboard; this.displayScale = scale;
-            this.glowEnabled = glowEnabled; this.glowColor = glowColor;
-            this.textShadowed = shadowed; this.textSeeThrough = seeThrough;
-            this.textBackgroundTransparent = transparentBg; return this;
-        }
+                       boolean glowEnabled, ChatColor glowColor,
+                       boolean shadowed, boolean seeThrough, org.bukkit.Color backgroundColor) {
+    this.billboard = billboard; this.displayScale = scale;
+    this.glowEnabled = glowEnabled; this.glowColor = glowColor;
+    this.textShadowed = shadowed; this.textSeeThrough = seeThrough;
+    this.textBackgroundColor = backgroundColor; return this;
+}
         public Builder appear(SpawnAnimation anim, int durationTicks) {
             this.appearAnimation = anim; this.appearDurationTicks = durationTicks; return this;
         }
@@ -362,7 +362,7 @@ public class HologramData {
     public ChatColor getGlowColor() { return glowColor; }
     public boolean isTextShadowed() { return textShadowed; }
     public boolean isTextSeeThrough() { return textSeeThrough; }
-    public boolean isTextBackgroundTransparent() { return textBackgroundTransparent; }
+    public org.bukkit.Color getTextBackgroundColor() { return textBackgroundColor; }
     public boolean isSquashEnabled() { return squashEnabled; }
     public double getSquashAmplitude() { return squashAmplitude; }
     public double getSquashSpeed() { return squashSpeed; }
