@@ -4,6 +4,7 @@ import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.HologramData;
 import dev.rewardhologram.util.ColorUtil;
+import dev.rewardhologram.util.HologramUtil;
 import dev.rewardhologram.util.SkullUtil;
 import org.bukkit.Location;
 import org.bukkit.entity.ArmorStand;
