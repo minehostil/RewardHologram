@@ -11,6 +11,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.entity.Interaction;
+import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
@@ -42,7 +44,9 @@ public class HologramListener implements Listener {
     @EventHandler
     public void onInteractEntity(PlayerInteractEntityEvent event) {
         Entity clicked = event.getRightClicked();
-        if (!(clicked instanceof ArmorStand) && !(clicked instanceof Display)) return;
+        if (!(clicked instanceof ArmorStand)
+                && !(clicked instanceof Display)
+                && !(clicked instanceof Interaction)) return;
         handleRightClickDirect(event.getPlayer(), clicked, event);
     }
 
@@ -67,6 +71,32 @@ public class HologramListener implements Listener {
         if (data.getClickType() == HologramData.ClickType.LEFT) return;
 
         claim(player, data, hologramId);
+    }
+
+    // ─── Bloqueo de equipamiento de armor stands ───────────────────────────────
+
+    /**
+     * Bloquea equipar/robar items de CUALQUIER armor stand del plugin.
+     *
+     * Cuando el ítem en mano es equipable (armaduras, elytra, heads), el
+     * servidor dispara PlayerArmorStandManipulateEvent — que NO pasa por los
+     * handlers de PlayerInteractEntityEvent (Bukkit registra por clase exacta),
+     * por eso el proxy anterior terminaba con la chestplate puesta.
+     *
+     * Cancelar este evento bloquea: equipar items en el proxy y en los stands
+     * de texto (ambos renderers), y robar el casco de la skull con mano vacía.
+     * No reclama — el claim lo maneja el flujo de interact normal.
+     */
+    @EventHandler
+    public void onArmorStandManipulate(PlayerArmorStandManipulateEvent event) {
+        String ownerStr = event.getRightClicked().getPersistentDataContainer()
+                .get(plugin.getOwnerKey(), PersistentDataType.STRING);
+        String hologramId = event.getRightClicked().getPersistentDataContainer()
+                .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
+
+        if (ownerStr == null || hologramId == null) return;
+
+        event.setCancelled(true);
     }
 
     // ─── Clic derecho por ray trace (DISPLAY) ──────────────────────────────────
