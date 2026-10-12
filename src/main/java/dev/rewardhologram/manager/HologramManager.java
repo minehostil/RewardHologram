@@ -3,7 +3,7 @@ package dev.rewardhologram.manager;
 import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.hologram.DisplayHologram;
 import dev.rewardhologram.hologram.Hologram;
-import dev.rewardhologram.hologram.HologramUtil;
+import dev.rewardhologram.util.HologramUtil;
 import dev.rewardhologram.hologram.RealHologram;
 import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.ActiveHologramInfo;
