@@ -123,9 +123,9 @@ public class HologramListener implements Listener {
                 player.getEyeLocation().getDirection(),
                 ATTACK_REACH, FluidCollisionMode.NEVER, true);
         if (blockHit != null && entityHit.getHitPosition()
-                .distanceSquared(player.getEyeLocation())
+                .distanceSquared(player.getEyeLocation().toVector())
                 > blockHit.getHitPosition()
-                .distanceSquared(player.getEyeLocation())) {
+                .distanceSquared(player.getEyeLocation().toVector())) {
             return;
         }
 
@@ -150,10 +150,9 @@ public class HologramListener implements Listener {
     }
 
     /**
-     * Se mantiene como red de seguridad: cancela daño a armor stands del plugin
-     * y reclama si el evento llegara a dispararse (el claim es idempotente —
-     * cooldown + remoción previa — así que aunque este handler y el ray trace
-     * procesen el mismo clic, la recompensa se da una sola vez).
+     * Red de seguridad: cancela daño a armor stands del plugin y reclama
+     * si el evento llegara a dispararse (el claim es idempotente — cooldown
+     * + remoción previa — así que la recompensa se da una sola vez).
      */
     @EventHandler
     public void onArmorStandDamage(EntityDamageByEntityEvent event) {
