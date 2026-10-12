@@ -1,6 +1,7 @@
 package dev.rewardhologram.model;
 
 import org.bukkit.ChatColor;
+import org.bukkit.Color;
 import org.bukkit.entity.Display;
 
 import java.util.ArrayList;
@@ -80,7 +81,7 @@ public class HologramData {
     private final ChatColor glowColor;
     private final boolean textShadowed;
     private final boolean textSeeThrough;
-    private final boolean textBackgroundTransparent;
+    private final Color textBackgroundColor; // ARGB resuelto (TRANSPARENT/DEFAULT/#AARRGGBB)
 
     // Animaciones de la skull (solo DISPLAY)
     private final boolean squashEnabled;
@@ -154,7 +155,7 @@ public class HologramData {
         this.glowColor = b.glowColor;
         this.textShadowed = b.textShadowed;
         this.textSeeThrough = b.textSeeThrough;
-        this.textBackgroundTransparent = b.textBackgroundTransparent;
+        this.textBackgroundColor = b.textBackgroundColor;
         this.squashEnabled = b.squashEnabled;
         this.squashAmplitude = b.squashAmplitude;
         this.squashSpeed = b.squashSpeed;
@@ -217,7 +218,7 @@ public class HologramData {
         private ChatColor glowColor = ChatColor.WHITE;
         private boolean textShadowed = false;
         private boolean textSeeThrough = false;
-        private org.bukkit.Color textBackgroundColor = org.bukkit.Color.fromARGB(0, 0, 0, 0);
+        private Color textBackgroundColor = Color.fromARGB(0, 0, 0, 0); // TRANSPARENT
         private boolean squashEnabled = false;
         private double squashAmplitude = 0.12, squashSpeed = 0.15;
         private boolean tiltEnabled = false;
@@ -281,13 +282,13 @@ public class HologramData {
         public Builder clickType(ClickType v) { this.clickType = v; return this; }
         public Builder renderer(Renderer v) { this.renderer = v; return this; }
         public Builder display(Display.Billboard billboard, double scale,
-                       boolean glowEnabled, ChatColor glowColor,
-                       boolean shadowed, boolean seeThrough, org.bukkit.Color backgroundColor) {
-    this.billboard = billboard; this.displayScale = scale;
-    this.glowEnabled = glowEnabled; this.glowColor = glowColor;
-    this.textShadowed = shadowed; this.textSeeThrough = seeThrough;
-    this.textBackgroundColor = backgroundColor; return this;
-}
+                               boolean glowEnabled, ChatColor glowColor,
+                               boolean shadowed, boolean seeThrough, Color backgroundColor) {
+            this.billboard = billboard; this.displayScale = scale;
+            this.glowEnabled = glowEnabled; this.glowColor = glowColor;
+            this.textShadowed = shadowed; this.textSeeThrough = seeThrough;
+            this.textBackgroundColor = backgroundColor; return this;
+        }
         public Builder appear(SpawnAnimation anim, int durationTicks) {
             this.appearAnimation = anim; this.appearDurationTicks = durationTicks; return this;
         }
@@ -362,7 +363,7 @@ public class HologramData {
     public ChatColor getGlowColor() { return glowColor; }
     public boolean isTextShadowed() { return textShadowed; }
     public boolean isTextSeeThrough() { return textSeeThrough; }
-    public org.bukkit.Color getTextBackgroundColor() { return textBackgroundColor; }
+    public Color getTextBackgroundColor() { return textBackgroundColor; }
     public boolean isSquashEnabled() { return squashEnabled; }
     public double getSquashAmplitude() { return squashAmplitude; }
     public double getSquashSpeed() { return squashSpeed; }
