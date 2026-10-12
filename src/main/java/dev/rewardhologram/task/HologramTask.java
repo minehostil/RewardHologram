@@ -7,18 +7,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
 /**
- * Dos tareas separadas:
- *
- * 1. BukkitRunnable SÍNCRONO — spawn evaluation cada segundo (hilo principal,
- *    necesario para spawnear entidades y enviar packets a jugadores).
- *
- * 2. BukkitRunnable SÍNCRONO — bobbing cada tick (hilo principal, necesario
- *    para teleportar entidades). Los packets de teleport son muy ligeros
- *    (~20 bytes cada uno), el impacto real en TPS es mínimo incluso con
- *    20 jugadores activos.
- *
- * Separar las tareas permite que el bobbing corra cada tick sin evaluar
- * el spawn (operación más costosa) en cada tick.
+ * 1. Tarea cada tick — animaciones (delega en cada Hologram:
+ *    armor stands se teletransportan, displays interpolan transforms).
+ * 2. Tarea cada 20 ticks — evaluación de spawn (interval + chance).
  */
 public class HologramTask {
 
@@ -29,15 +20,15 @@ public class HologramTask {
     }
 
     public void start() {
-        // Tarea 1: Bobbing — cada tick (fluido, ligero)
+        // Tarea 1: Animaciones — cada tick
         new BukkitRunnable() {
             @Override
             public void run() {
-                plugin.getHologramManager().tickBobbing();
+                plugin.getHologramManager().tickHolograms();
             }
         }.runTaskTimer(plugin, 1L, 1L);
 
-        // Tarea 2: Evaluación de spawn — cada 20 ticks (1 segundo, más costoso)
+        // Tarea 2: Evaluación de spawn — cada 20 ticks (1 segundo)
         new BukkitRunnable() {
             @Override
             public void run() {
