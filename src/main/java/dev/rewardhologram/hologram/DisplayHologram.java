@@ -227,6 +227,7 @@ public class DisplayHologram implements Hologram {
                     ? Color.fromARGB(0, 0, 0, 0)      // Fondo invisible — look holograma clásico
                     : Color.fromARGB(0x40, 0, 0, 0)); // Fondo semitransparente
             td.setTeleportDuration(1); // Interpolar teleports — movimiento suave
+            td.setInvulnerable(true);
             td.setPersistent(false);
             applyGlow(td);
             td.setTransformation(staticLineTransform(index, initialScale));
@@ -239,6 +240,7 @@ public class DisplayHologram implements Hologram {
             id.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.HEAD);
             id.setBillboard(data.getBillboard());
             id.setTeleportDuration(1);
+            td.setInvulnerable(true);
             id.setPersistent(false);
             applyGlow(id);
             id.setTransformation(staticSkullTransform(initialScale));
