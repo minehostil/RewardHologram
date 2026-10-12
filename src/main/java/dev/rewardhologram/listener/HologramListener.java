@@ -1,25 +1,35 @@
 package dev.rewardhologram.listener;
 
-import com.destroystokyo.paper.event.player.PrePlayerAttackEntityEvent;
 import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.model.HologramData;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.RayTraceResult;
 
 import java.util.stream.Collectors;
 
 public class HologramListener implements Listener {
+
+    /**
+     * Alcance del ray para el clic izquierdo. El cliente solo permite
+     * atacar entidades a ~3 bloques; 4 da margen por latencia.
+     */
+    private static final double ATTACK_REACH = 4.0;
 
     private final RewardHologramPlugin plugin;
 
@@ -30,10 +40,8 @@ public class HologramListener implements Listener {
     // ─── Clic derecho ─────────────────────────────────────────────────────────
 
     /**
-     * Clic derecho sobre ARMOR STANDS.
-     * Los armor stands disparan PlayerInteractAtEntityEvent — el paquete
-     * INTERACT_AT (con punto de interacción) es exclusivo de esta entidad
-     * en el cliente vanilla.
+     * Clic derecho sobre ARMOR STANDS — disparan PlayerInteractAtEntityEvent
+     * (el paquete INTERACT_AT es exclusivo de esta entidad en el cliente vanilla).
      */
     @EventHandler
     public void onInteractArmorStand(PlayerInteractAtEntityEvent event) {
@@ -42,16 +50,9 @@ public class HologramListener implements Listener {
     }
 
     /**
-     * Clic derecho sobre DISPLAY ENTITIES (TextDisplay/ItemDisplay).
-     *
-     * FIX: las displays NO disparan PlayerInteractAtEntityEvent — el cliente
-     * vanilla no envía INTERACT_AT para ellas. Disparan el evento genérico
-     * PlayerInteractEntityEvent. Por eso los hologramas DISPLAY no eran
-     * reclamables con el listener anterior.
-     *
-     * El guard "instanceof" evita doble procesamiento: si el evento At
-     * también llega a este handler (At extiende a InteractEntity), ya fue
-     * manejado por onInteractArmorStand.
+     * Clic derecho sobre DISPLAY ENTITIES — disparan el genérico
+     * PlayerInteractEntityEvent (el cliente no envía INTERACT_AT para displays).
+     * El guard evita re-procesar eventos At que ya manejó onInteractArmorStand.
      */
     @EventHandler
     public void onInteractDisplay(PlayerInteractEntityEvent event) {
@@ -79,7 +80,6 @@ public class HologramListener implements Listener {
         HologramData data = plugin.getHologramManager().getDefinition(hologramId);
         if (data == null) return;
 
-        // Verificar si RIGHT o BOTH están permitidos
         HologramData.ClickType type = data.getClickType();
         if (type == HologramData.ClickType.LEFT) return;
 
@@ -89,27 +89,55 @@ public class HologramListener implements Listener {
     // ─── Clic izquierdo ───────────────────────────────────────────────────────
 
     /**
-     * Clic izquierdo sobre DISPLAY ENTITIES.
+     * Clic izquierdo sobre cualquier entidad del plugin — vía arm swing + ray trace.
      *
-     * Las displays no son LivingEntity y, al ser invulnerables, NO generan
-     * EntityDamageByEntityEvent. Este evento de protocolo de Paper se dispara
-     * para TODA entidad atacada (incluidas las displays) y es la única vía
-     * fiable para detectar el clic izquierdo sobre ellas.
+     * Por qué este enfoque y no eventos de daño:
+     *  1. Las displays no son LivingEntity y al ser invulnerables NUNCA generan
+     *     EntityDamageByEntityEvent.
+     *  2. Nuestras entidades son invulnerables (setInvulnerable(true)) — el check
+     *     isInvulnerableTo() aborta el daño ANTES de disparar el evento de daño,
+     *     así que ese evento tampoco llega para los armor stands del plugin.
+     *
+     * El paquete de swing del brazo se envía en TODO clic izquierdo, incluso con
+     * una entidad en la mira — PlayerAnimationEvent es un punto de enganche
+     * fiable en cualquier versión de la API. rayTraceEntities() reproduce el
+     * cálculo de objetivo del cliente.
      */
-    @EventHandler
-    public void onAttackDisplay(PrePlayerAttackEntityEvent event) {
-        if (!(event.getEntity() instanceof Display target)) return;
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onArmSwing(PlayerAnimationEvent event) {
+        if (event.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
 
-        String ownerStr = target.getPersistentDataContainer()
+        Player player = event.getPlayer();
+
+        // Chequeo barato (map lookup) antes del ray trace — el 99% de los swings
+        // (minería, combate) ocurre sin ningún holograma activo del jugador
+        if (!plugin.getHologramManager().hasActiveHolograms(player.getUniqueId())) return;
+
+        RayTraceResult entityHit = player.rayTraceEntities((int) ATTACK_REACH, true);
+        if (entityHit == null || entityHit.getHitEntity() == null) return;
+
+        // Si hay un bloque más cerca que la entidad, el ataque va al bloque,
+        // no al holograma (evita reclamos al minar "a través" del holograma)
+        RayTraceResult blockHit = player.getWorld().rayTraceBlocks(
+                player.getEyeLocation(),
+                player.getEyeLocation().getDirection(),
+                ATTACK_REACH, FluidCollisionMode.NEVER, true);
+        if (blockHit != null && entityHit.getHitPosition()
+                .distanceSquared(player.getEyeLocation())
+                > blockHit.getHitPosition()
+                .distanceSquared(player.getEyeLocation())) {
+            return;
+        }
+
+        Entity hit = entityHit.getHitEntity();
+
+        String ownerStr = hit.getPersistentDataContainer()
                 .get(plugin.getOwnerKey(), PersistentDataType.STRING);
-        String hologramId = target.getPersistentDataContainer()
+        String hologramId = hit.getPersistentDataContainer()
                 .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
 
         if (ownerStr == null || hologramId == null) return;
 
-        event.setCancelled(true);
-
-        Player player = event.getPlayer();
         if (!player.getUniqueId().toString().equals(ownerStr)) return;
 
         HologramData data = plugin.getHologramManager().getDefinition(hologramId);
@@ -122,8 +150,10 @@ public class HologramListener implements Listener {
     }
 
     /**
-     * Clic izquierdo sobre ARMOR STANDS (vía EntityDamageByEntityEvent,
-     * como en el plugin original).
+     * Se mantiene como red de seguridad: cancela daño a armor stands del plugin
+     * y reclama si el evento llegara a dispararse (el claim es idempotente —
+     * cooldown + remoción previa — así que aunque este handler y el ray trace
+     * procesen el mismo clic, la recompensa se da una sola vez).
      */
     @EventHandler
     public void onArmorStandDamage(EntityDamageByEntityEvent event) {
@@ -180,8 +210,6 @@ public class HologramListener implements Listener {
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         // Al cambiar de mundo los chunks del mundo anterior se descargan,
         // dejando las entidades del holograma huérfanas e inamovibles.
-        // Eliminarlos inmediatamente evita hologramas que no desaparecen
-        // y que se puedan reclamar infinitamente.
         plugin.getHologramManager().removeAllForPlayer(event.getPlayer());
     }
 
@@ -194,8 +222,7 @@ public class HologramListener implements Listener {
         if (plugin.getHologramManager().isClickOnCooldown(player.getUniqueId(), hologramId)) return;
 
         // Remover del mapa ANTES de ejecutar comandos.
-        // Esto garantiza que aunque falle el destroy o el jugador haga clic
-        // múltiples veces muy rápido, las recompensas solo se dan una vez.
+        // Garantiza que las recompensas solo se den una vez.
         plugin.getHologramManager().removeHologram(player, hologramId);
         plugin.getHologramManager().executeCommands(player, data);
     }
