@@ -7,7 +7,6 @@ import dev.rewardhologram.util.ColorUtil;
 import dev.rewardhologram.util.HologramUtil;
 import dev.rewardhologram.util.SkullUtil;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.entity.Display;
@@ -217,8 +216,7 @@ public class DisplayHologram implements Hologram {
     private TextDisplay spawnTextLine(Location loc, int index, float initialScale) {
         return loc.getWorld().spawn(loc, TextDisplay.class, td -> {
             // setText() solo acepta String con códigos § (API Bukkit legacy).
-            // colorString() serializa el Component de Adventure a ese formato —
-            // color() devolvería un Component y no compila aquí.
+            // colorString() serializa el Component de Adventure a ese formato.
             td.setText(ColorUtil.colorString(data.getLines().get(index)));
             td.setBillboard(data.getBillboard());
             td.setSeeThrough(data.isTextSeeThrough());
@@ -235,15 +233,15 @@ public class DisplayHologram implements Hologram {
     }
 
     private ItemDisplay spawnSkull(Location loc, float initialScale) {
-        return loc.getWorld().spawn(loc, ItemDisplay.class, id -> {
-            id.setItemStack(SkullUtil.createSkull(data.getSkullTexture()));
-            id.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.HEAD);
-            id.setBillboard(data.getBillboard());
-            id.setTeleportDuration(1);
-            td.setInvulnerable(true);
-            id.setPersistent(false);
-            applyGlow(id);
-            id.setTransformation(staticSkullTransform(initialScale));
+        return loc.getWorld().spawn(loc, ItemDisplay.class, skull -> {
+            skull.setItemStack(SkullUtil.createSkull(data.getSkullTexture()));
+            skull.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.HEAD);
+            skull.setBillboard(data.getBillboard());
+            skull.setTeleportDuration(1);
+            skull.setInvulnerable(true);
+            skull.setPersistent(false);
+            applyGlow(skull);
+            skull.setTransformation(staticSkullTransform(initialScale));
         });
     }
 
