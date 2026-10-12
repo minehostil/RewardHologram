@@ -76,8 +76,10 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                 String owner = entity.getPersistentDataContainer()
                         .get(ownerKey, PersistentDataType.STRING);
                 if (owner == null) continue;
-                // Cubrir armor stands Y display entities
-                if (entity instanceof ArmorStand || entity instanceof Display) {
+                // Cubrir armor stands, display entities Y interaction entities
+                if (entity instanceof ArmorStand
+                        || entity instanceof Display
+                        || entity instanceof org.bukkit.entity.Interaction) {
                     entity.remove();
                     removed++;
                 }
