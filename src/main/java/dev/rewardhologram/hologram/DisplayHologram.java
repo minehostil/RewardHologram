@@ -4,6 +4,7 @@ import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.HologramData;
 import dev.rewardhologram.util.ColorUtil;
+import dev.rewardhologram.util.HologramUtil;
 import dev.rewardhologram.util.SkullUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -42,7 +43,6 @@ public class DisplayHologram implements Hologram {
     private static final Vector3f ZERO_TRANSLATION = new Vector3f(0, 0, 0);
     private static final Quaternionf IDENTITY_ROTATION = new Quaternionf();
     private static final Vector3f NEAR_ZERO_SCALE = new Vector3f(0.0001f, 0.0001f, 0.0001f);
-    private static final String GLOW_TEAM_PREFIX = "rh_glow_";
 
     private final RewardHologramPlugin plugin;
     private final Player player;
@@ -216,7 +216,10 @@ public class DisplayHologram implements Hologram {
 
     private TextDisplay spawnTextLine(Location loc, int index, float initialScale) {
         return loc.getWorld().spawn(loc, TextDisplay.class, td -> {
-            td.setText(ColorUtil.color(data.getLines().get(index)));
+            // setText() solo acepta String con códigos § (API Bukkit legacy).
+            // colorString() serializa el Component de Adventure a ese formato —
+            // color() devolvería un Component y no compila aquí.
+            td.setText(ColorUtil.colorString(data.getLines().get(index)));
             td.setBillboard(data.getBillboard());
             td.setSeeThrough(data.isTextSeeThrough());
             td.setShadowed(data.isTextShadowed());
@@ -296,9 +299,10 @@ public class DisplayHologram implements Hologram {
         display.setGlowing(true);
         try {
             var sb = Bukkit.getScoreboardManager().getMainScoreboard();
-            Team team = sb.getTeam(GLOW_TEAM_PREFIX + data.getGlowColor().name());
+            String teamName = HologramUtil.glowTeamName(data.getGlowColor());
+            Team team = sb.getTeam(teamName);
             if (team == null) {
-                team = sb.registerNewTeam(GLOW_TEAM_PREFIX + data.getGlowColor().name());
+                team = sb.registerNewTeam(teamName);
                 team.setColor(data.getGlowColor());
             }
             team.addEntry(display.getUniqueId().toString());
@@ -308,7 +312,7 @@ public class DisplayHologram implements Hologram {
     private void unregisterGlow(Display display) {
         try {
             for (Team team : Bukkit.getScoreboardManager().getMainScoreboard().getTeams()) {
-                if (team.getName().startsWith(GLOW_TEAM_PREFIX))
+                if (team.getName().startsWith(HologramUtil.GLOW_TEAM_PREFIX))
                     team.removeEntry(display.getUniqueId().toString());
             }
         } catch (Exception ignored) {}
