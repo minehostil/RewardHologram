@@ -22,6 +22,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Interaction;   
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.Team;
 import org.bukkit.util.BoundingBox;
@@ -171,7 +172,7 @@ public class HologramManager {
                             parseChatColor(h.getString("display.glow.color", "WHITE")),
                             h.getBoolean("display.text.shadowed", false),
                             h.getBoolean("display.text.see-through", false),
-                            parseBackgroundColor(h.getString("display.text.background", "TRANSPARENT"))
+                            parseBackgroundColor(h.getString("display.text.background", "TRANSPARENT")))
                     .appear(parseSpawnAnimation(h.getString("appear.animation", "NONE")),
                             h.getInt("appear.duration-ticks", 6))
                     .appearParticles(
