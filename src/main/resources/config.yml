@@ -170,13 +170,19 @@ holograms:
     text:
       shadowed: true
       see-through: false
-      background: "#40000000"   # vanilla look — negro al 25%
-      # Otras opciones:
-      #   background: TRANSPARENT        # invisible (como hasta ahora)
-      #   background: DEFAULT            # panel vanilla
-      #   background: "#80000000"        # negro al 50%
-      #   background: "#80FF0000"        # rojo al 50%
-      #   background: "FFD700"           # dorado opaco (6 dígitos)
+      # Text background — accepts 3 formats:
+      #   TRANSPARENT     — fully invisible (classic hologram look)
+      #   DEFAULT         — vanilla dark panel (black at 25%)
+      #   "#AARRGGBB"     — custom ARGB color (alpha + hex)
+      #   "#RRGGBB"       — custom RGB color (fully opaque)
+      # WARNING: hex values MUST be quoted, otherwise '#' starts a YAML comment
+      background: "#40000000"
+      # Examples:
+      #   background: TRANSPARENT        # invisible (as it was until now)
+      #   background: DEFAULT            # vanilla panel
+      #   background: "#80000000"        # black at 50%
+      #   background: "#80FF0000"        # red at 50%
+      #   background: "FFD700"           # opaque gold (6 digits)
 
     # Effects when the hologram APPEARS.
     appear:
