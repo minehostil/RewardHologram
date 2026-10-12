@@ -309,4 +309,4 @@ Server startup      →  cleanOrphanedArmorStands() scans all worlds and removes
 
 ## 📝 Getting Skull Textures
 
-Go to [minecraft-heads.com](https://minecraft-heads.com), find the head you want and copy the **"Value"** field into `skull.texture`.
+Go to [minecraft-heads.com](https://sapphi.dev/heads), find the head you want and copy the **"Value"** field into `skull.texture`.
