@@ -1,5 +1,6 @@
 package dev.rewardhologram.listener;
 
+import com.destroystokyo.paper.event.player.PrePlayerAttackEntityEvent;
 import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.model.HologramData;
 import org.bukkit.entity.ArmorStand;
@@ -11,6 +12,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.persistence.PersistentDataType;
@@ -28,32 +30,111 @@ public class HologramListener implements Listener {
     // ─── Clic derecho ─────────────────────────────────────────────────────────
 
     /**
-     * Handler unificado para ambas entidades del plugin:
-     * armor stands (renderer ARMOR_STAND) y display entities (renderer DISPLAY).
+     * Clic derecho sobre ARMOR STANDS.
+     * Los armor stands disparan PlayerInteractAtEntityEvent — el paquete
+     * INTERACT_AT (con punto de interacción) es exclusivo de esta entidad
+     * en el cliente vanilla.
      */
     @EventHandler
-    public void onInteract(PlayerInteractAtEntityEvent event) {
-        Entity clicked = event.getRightClicked();
-        if (!(clicked instanceof ArmorStand) && !(clicked instanceof Display)) return;
-
-        handleClaim(event.getPlayer(), clicked, event);
+    public void onInteractArmorStand(PlayerInteractAtEntityEvent event) {
+        if (!(event.getRightClicked() instanceof ArmorStand)) return;
+        handleRightClick(event.getPlayer(), event.getRightClicked(), event);
     }
 
-    // ─── Clic izquierdo (ataque) ──────────────────────────────────────────────
-
+    /**
+     * Clic derecho sobre DISPLAY ENTITIES (TextDisplay/ItemDisplay).
+     *
+     * FIX: las displays NO disparan PlayerInteractAtEntityEvent — el cliente
+     * vanilla no envía INTERACT_AT para ellas. Disparan el evento genérico
+     * PlayerInteractEntityEvent. Por eso los hologramas DISPLAY no eran
+     * reclamables con el listener anterior.
+     *
+     * El guard "instanceof" evita doble procesamiento: si el evento At
+     * también llega a este handler (At extiende a InteractEntity), ya fue
+     * manejado por onInteractArmorStand.
+     */
     @EventHandler
-    public void onHologramDamage(EntityDamageByEntityEvent event) {
-        if (!(event.getDamager() instanceof Player player)) return;
+    public void onInteractDisplay(PlayerInteractEntityEvent event) {
+        if (event instanceof PlayerInteractAtEntityEvent) return;
+        if (!(event.getRightClicked() instanceof Display)) return;
+        handleRightClick(event.getPlayer(), event.getRightClicked(), event);
+    }
 
-        Entity target = event.getEntity();
-        if (!(target instanceof ArmorStand) && !(target instanceof Display)) return;
+    private void handleRightClick(Player player, Entity clicked,
+                                  PlayerInteractEntityEvent event) {
+        String ownerStr = clicked.getPersistentDataContainer()
+                .get(plugin.getOwnerKey(), PersistentDataType.STRING);
+        String hologramId = clicked.getPersistentDataContainer()
+                .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
+
+        if (ownerStr == null || hologramId == null) return;
+
+        // Cancelar SIEMPRE que sea una entidad del plugin — aunque quien
+        // clickee no sea el dueño — para que la interacción no atraviese
+        // el holograma (colocar bloques, abrir inventario, etc.)
+        event.setCancelled(true);
+
+        if (!player.getUniqueId().toString().equals(ownerStr)) return;
+
+        HologramData data = plugin.getHologramManager().getDefinition(hologramId);
+        if (data == null) return;
+
+        // Verificar si RIGHT o BOTH están permitidos
+        HologramData.ClickType type = data.getClickType();
+        if (type == HologramData.ClickType.LEFT) return;
+
+        claim(player, data, hologramId);
+    }
+
+    // ─── Clic izquierdo ───────────────────────────────────────────────────────
+
+    /**
+     * Clic izquierdo sobre DISPLAY ENTITIES.
+     *
+     * Las displays no son LivingEntity y, al ser invulnerables, NO generan
+     * EntityDamageByEntityEvent. Este evento de protocolo de Paper se dispara
+     * para TODA entidad atacada (incluidas las displays) y es la única vía
+     * fiable para detectar el clic izquierdo sobre ellas.
+     */
+    @EventHandler
+    public void onAttackDisplay(PrePlayerAttackEntityEvent event) {
+        if (!(event.getEntity() instanceof Display target)) return;
 
         String ownerStr = target.getPersistentDataContainer()
                 .get(plugin.getOwnerKey(), PersistentDataType.STRING);
         String hologramId = target.getPersistentDataContainer()
                 .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
 
-        // Solo cancelar si es una entidad del plugin
+        if (ownerStr == null || hologramId == null) return;
+
+        event.setCancelled(true);
+
+        Player player = event.getPlayer();
+        if (!player.getUniqueId().toString().equals(ownerStr)) return;
+
+        HologramData data = plugin.getHologramManager().getDefinition(hologramId);
+        if (data == null) return;
+
+        HologramData.ClickType type = data.getClickType();
+        if (type == HologramData.ClickType.RIGHT) return;
+
+        claim(player, data, hologramId);
+    }
+
+    /**
+     * Clic izquierdo sobre ARMOR STANDS (vía EntityDamageByEntityEvent,
+     * como en el plugin original).
+     */
+    @EventHandler
+    public void onArmorStandDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof ArmorStand)) return;
+
+        String ownerStr = event.getEntity().getPersistentDataContainer()
+                .get(plugin.getOwnerKey(), PersistentDataType.STRING);
+        String hologramId = event.getEntity().getPersistentDataContainer()
+                .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
+
         if (ownerStr == null || hologramId == null) return;
 
         event.setCancelled(true);
@@ -64,7 +145,7 @@ public class HologramListener implements Listener {
         if (data == null) return;
 
         HologramData.ClickType type = data.getClickType();
-        if (type == HologramData.ClickType.RIGHT) return; // Solo acepta clic derecho
+        if (type == HologramData.ClickType.RIGHT) return;
 
         claim(player, data, hologramId);
     }
@@ -104,43 +185,12 @@ public class HologramListener implements Listener {
         plugin.getHologramManager().removeAllForPlayer(event.getPlayer());
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────
-
-    /**
-     * Flujo común de reclamación por clic derecho.
-     * El evento se cancela SIEMPRE que sea una entidad del plugin —
-     * aunque quien clickea no sea el dueño — para evitar que la interacción
-     * atraviese el holograma (romper bloques, abrir inventario, etc.).
-     */
-    private void handleClaim(Player player, Entity clicked,
-                             PlayerInteractAtEntityEvent event) {
-        String ownerStr = clicked.getPersistentDataContainer()
-                .get(plugin.getOwnerKey(), PersistentDataType.STRING);
-        String hologramId = clicked.getPersistentDataContainer()
-                .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
-
-        if (ownerStr == null || hologramId == null) return;
-
-        event.setCancelled(true);
-
-        if (!player.getUniqueId().toString().equals(ownerStr)) return;
-
-        HologramData data = plugin.getHologramManager().getDefinition(hologramId);
-        if (data == null) return;
-
-        // Verificar si RIGHT o BOTH están permitidos
-        HologramData.ClickType type = data.getClickType();
-        if (type == HologramData.ClickType.LEFT) return; // Solo acepta clic izquierdo
-
-        claim(player, data, hologramId);
-    }
+    // ─── Claim ─────────────────────────────────────────────────────────────────
 
     private void claim(Player player, HologramData data, String hologramId) {
-        // FIX: verificar el cooldown ANTES de remover el holograma.
-        // Antes el holograma se removía primero y executeCommands podía
-        // rechazar el clic por cooldown — el holograma desaparecía sin dar
-        // ninguna recompensa. Ahora un clic en cooldown simplemente se ignora
-        // y el holograma sigue disponible.
+        // Verificar el cooldown ANTES de remover el holograma.
+        // Un clic en cooldown simplemente se ignora y el holograma sigue
+        // disponible — nunca se consume sin pagar la recompensa.
         if (plugin.getHologramManager().isClickOnCooldown(player.getUniqueId(), hologramId)) return;
 
         // Remover del mapa ANTES de ejecutar comandos.
