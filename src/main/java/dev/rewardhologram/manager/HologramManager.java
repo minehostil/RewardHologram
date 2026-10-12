@@ -171,8 +171,7 @@ public class HologramManager {
                             parseChatColor(h.getString("display.glow.color", "WHITE")),
                             h.getBoolean("display.text.shadowed", false),
                             h.getBoolean("display.text.see-through", false),
-                            h.getString("display.text.background", "TRANSPARENT")
-                                    .equalsIgnoreCase("TRANSPARENT"))
+                            parseBackgroundColor(h.getString("display.text.background", "TRANSPARENT"))
                     .appear(parseSpawnAnimation(h.getString("appear.animation", "NONE")),
                             h.getInt("appear.duration-ticks", 6))
                     .appearParticles(
@@ -713,6 +712,46 @@ public class HologramManager {
     }
 
     // ─── Parsers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Resuelve el fondo del texto. Acepta:
+     *   TRANSPARENT   — fondo invisible (default)
+     *   DEFAULT       — panel vanilla (negro al 25%, 0x40000000)
+     *   "#AARRGGBB"   — color ARGB personalizado (ej. "#80000000" = negro 50%)
+     *   "#RRGGBB"     — color RGB opaco (alpha FF)
+     * IMPORTANTE: en el config el valor hex debe ir ENTRE COMILLAS — sin
+     * ellas YAML lo interpreta como comentario.
+     */
+    private org.bukkit.Color parseBackgroundColor(String value) {
+        org.bukkit.Color fallback = org.bukkit.Color.fromARGB(0, 0, 0, 0);
+        if (value == null || value.isBlank()) return fallback;
+        String v = value.trim();
+
+        if (v.equalsIgnoreCase("TRANSPARENT")) return fallback;
+        if (v.equalsIgnoreCase("DEFAULT")) return org.bukkit.Color.fromARGB(0x40, 0, 0, 0);
+
+        String hex = v.startsWith("#") ? v.substring(1) : v;
+        try {
+            if (hex.length() == 8) {
+                long argb = Long.parseLong(hex, 16);
+                return org.bukkit.Color.fromARGB(
+                        (int) ((argb >> 24) & 0xFF),
+                        (int) ((argb >> 16) & 0xFF),
+                        (int) ((argb >> 8) & 0xFF),
+                        (int) (argb & 0xFF));
+            }
+            if (hex.length() == 6) {
+                int rgb = Integer.parseInt(hex, 16);
+                // 6 dígitos = sin alpha explícito → opaco
+                return org.bukkit.Color.fromARGB(0xFF,
+                        (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+            }
+        } catch (NumberFormatException ignored) {}
+
+        plugin.getLogger().warning("Invalid text background '" + v
+                + "'. Use TRANSPARENT, DEFAULT or quoted \"#AARRGGBB\" / \"#RRGGBB\".");
+        return fallback;
+    }
 
     private HologramData.Renderer parseRenderer(String value) {
         try {
