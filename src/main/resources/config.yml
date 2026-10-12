@@ -236,7 +236,7 @@ holograms:
       # Skull size with the DISPLAY renderer (1.0 = item size).
       # Try 1.5 - 2.0 for a bigger, more visible head.
       # Ignored with ARMOR_STAND.
-      scale: 1.0
+      scale: 1.5
       # Automatic continuous Y rotation of the skull.
       rotation:
         # Enable/disable the spinning.
