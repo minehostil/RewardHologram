@@ -282,9 +282,8 @@ public class DisplayHologram implements Hologram {
             td.setBillboard(data.getBillboard());
             td.setSeeThrough(data.isTextSeeThrough());
             td.setShadowed(data.isTextShadowed());
-            td.setBackgroundColor(data.isTextBackgroundTransparent()
-                    ? Color.fromARGB(0, 0, 0, 0)      // Fondo invisible — look holograma clásico
-                    : Color.fromARGB(0x40, 0, 0, 0)); // Fondo semitransparente
+            // Color ARGB resuelto al cargar el config (TRANSPARENT, DEFAULT o #AARRGGBB)
+            td.setBackgroundColor(data.getTextBackgroundColor());
             td.setTeleportDuration(1); // Interpolar teleports — movimiento suave
             td.setInvulnerable(true);
             td.setPersistent(false);
