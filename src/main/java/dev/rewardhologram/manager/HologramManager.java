@@ -388,8 +388,6 @@ public class HologramManager {
 
         ActiveHologram best = null;
         for (ActiveHologram active : map.values()) {
-            // ARMOR_STAND se maneja por eventos directos — no interferir
-            if (active.getType() != ActiveHologram.Type.DISPLAY) continue;
             BoundingBox box = hologramBox(active);
             if (box == null) continue;
             RayTraceResult r = box.rayTrace(origin, dir, maxDist);
