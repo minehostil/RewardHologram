@@ -167,15 +167,16 @@ holograms:
         color: YELLOW
 
       # Text styling for the hologram lines.
-      text:
-        # Drop shadow behind the text characters.
-        shadowed: true
-        # Whether the text is visible through solid walls.
-        see-through: false
-        # Text background style:
-        #   TRANSPARENT — fully invisible background (classic hologram look)
-        #   DEFAULT     — vanilla semi-opaque dark panel behind the text
-        background: TRANSPARENT
+    text:
+      shadowed: true
+      see-through: false
+      background: "#40000000"   # vanilla look — negro al 25%
+      # Otras opciones:
+      #   background: TRANSPARENT        # invisible (como hasta ahora)
+      #   background: DEFAULT            # panel vanilla
+      #   background: "#80000000"        # negro al 50%
+      #   background: "#80FF0000"        # rojo al 50%
+      #   background: "FFD700"           # dorado opaco (6 dígitos)
 
     # Effects when the hologram APPEARS.
     appear:
