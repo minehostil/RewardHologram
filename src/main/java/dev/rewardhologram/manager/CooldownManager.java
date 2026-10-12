@@ -104,11 +104,13 @@ public class CooldownManager {
     }
 
     /**
-     * Elimina los cooldowns de un jugador (por ejemplo, al reclamar manualmente).
+     * Elimina los cooldowns de un jugador (útil para futuros comandos admin).
+     * FIX: antes hacía yaml.set(uuid, null) que no tenía efecto porque
+     * saveAsync() reconstruye el archivo desde el cache. Ahora basta con
+     * remover del cache — el próximo guardado lo elimina del archivo.
      */
     public void clearPlayer(UUID uuid) {
         cache.remove(uuid);
-        yaml.set(uuid.toString(), null);
         saveAsync();
     }
 
