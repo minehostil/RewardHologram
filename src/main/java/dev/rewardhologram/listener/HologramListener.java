@@ -197,6 +197,12 @@ public class HologramListener implements Listener {
         // disponible — nunca se consume sin pagar la recompensa.
         if (plugin.getHologramManager().isClickOnCooldown(player.getUniqueId(), hologramId)) return;
 
+        // Verificar que el holograma SIGUE activo antes de pagar.
+        // Con el proxy de interacción y el ray trace puede haber dos fuentes
+        // de eventos para el mismo clic; y durante el pop-out el proxy puede
+        // recibir un clic residual. Sin este check, ambas vías pagarían.
+        if (!plugin.getHologramManager().isActiveHologram(player.getUniqueId(), hologramId)) return;
+
         // Remover del mapa ANTES de ejecutar comandos.
         // Garantiza que las recompensas solo se den una vez.
         plugin.getHologramManager().removeHologram(player, hologramId);
