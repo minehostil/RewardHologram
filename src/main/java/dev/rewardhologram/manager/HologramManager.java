@@ -3,18 +3,19 @@ package dev.rewardhologram.manager;
 import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.hologram.DisplayHologram;
 import dev.rewardhologram.hologram.Hologram;
-import dev.rewardhologram.util.HologramUtil;
 import dev.rewardhologram.hologram.RealHologram;
 import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.ActiveHologramInfo;
 import dev.rewardhologram.model.HologramData;
 import dev.rewardhologram.model.RewardEntry;
+import dev.rewardhologram.util.HologramUtil;
 import dev.rewardhologram.util.LineParser;
 import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.configuration.ConfigurationSection;
@@ -23,7 +24,6 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.Team;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
@@ -330,6 +330,7 @@ public class HologramManager {
 
         releaseTicketsFor(entities);
     }
+
     /**
      * True si el jugador tiene al menos un holograma activo.
      * Chequeo barato (map lookup) para el listener antes del ray trace
@@ -338,6 +339,85 @@ public class HologramManager {
     public boolean hasActiveHolograms(UUID uuid) {
         Map<String, ActiveHologram> map = activeHolograms.get(uuid);
         return map != null && !map.isEmpty();
+    }
+
+    // ─── Ray tracing de clics (DISPLAY) ────────────────────────────────────────
+
+    /**
+     * Ray trace desde los ojos del jugador contra los AABBs de SUS hologramas
+     * activos del tipo DISPLAY.
+     *
+     * Por qué existe: el cliente vanilla no considera las display entities
+     * "pickable" (no son LivingEntity), así que NUNCA envía paquetes de
+     * interacción hacia ellas — PlayerInteractEntityEvent y los eventos de
+     * daño no llegan jamás. Este método reproduce la selección del cliente
+     * contra un AABB calculado por el plugin (área visual del holograma),
+     * más generoso y fiable que el hitbox técnico de la entidad.
+     *
+     * Solo considera hologramas del propio jugador y delante de cualquier
+     * bloque — minar/colocar frente a otro objeto no reclama por accidente.
+     *
+     * @return el holograma golpeado (el más cercano) o null.
+     */
+    public ActiveHologram rayTraceHologram(Player player) {
+        Map<String, ActiveHologram> map = activeHolograms.get(player.getUniqueId());
+        if (map == null || map.isEmpty()) return null;
+
+        Location eye = player.getEyeLocation();
+        Vector origin = eye.toVector();
+        Vector dir = eye.getDirection();
+        double reach = 4.0;
+
+        // Un bloque más cercano que el hit anula el hit del holograma
+        RayTraceResult blockHit = player.getWorld().rayTraceBlocks(
+                eye, dir, reach, FluidCollisionMode.NEVER, true);
+        double maxDist = blockHit != null
+                ? blockHit.getHitPosition().distance(origin)
+                : reach;
+
+        ActiveHologram best = null;
+        for (ActiveHologram active : map.values()) {
+            // ARMOR_STAND se maneja por eventos directos — no interferir
+            if (active.getType() != ActiveHologram.Type.DISPLAY) continue;
+            BoundingBox box = hologramBox(active);
+            if (box == null) continue;
+            RayTraceResult r = box.rayTrace(origin, dir, maxDist);
+            if (r == null) continue;
+            maxDist = r.getHitPosition().distance(origin);
+            best = active;
+        }
+        return best;
+    }
+
+    /**
+     * AABB generoso que cubre el área visual de un holograma DISPLAY:
+     * envuelve todas sus entidades con padding lateral (el texto es ancho)
+     * y vertical (el texto tiene altura propia).
+     */
+    private BoundingBox hologramBox(ActiveHologram active) {
+        final double PAD_XZ = 0.85;
+        final double PAD_Y = 0.35;
+
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE, minZ = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+        boolean any = false;
+
+        for (Entity e : active.getEntities()) {
+            if (e == null || e.isDead()) continue;
+            Location l = e.getLocation();
+            any = true;
+            minX = Math.min(minX, l.getX());
+            minY = Math.min(minY, l.getY());
+            minZ = Math.min(minZ, l.getZ());
+            maxX = Math.max(maxX, l.getX());
+            maxY = Math.max(maxY, l.getY());
+            maxZ = Math.max(maxZ, l.getZ());
+        }
+        if (!any) return null;
+
+        return new BoundingBox(
+                minX - PAD_XZ, minY - PAD_Y, minZ - PAD_XZ,
+                maxX + PAD_XZ, maxY + PAD_Y, maxZ + PAD_XZ);
     }
 
     public void removeAllForPlayer(Player player) {
@@ -493,34 +573,47 @@ public class HologramManager {
     // ─── Sonidos ───────────────────────────────────────────────────────────────
 
     /**
-     * Resuelve un nombre de sonido vía el registry de Paper.
-     * Sound.valueOf(String) está deprecado (y marcado para remoción) en Paper
-     * reciente — el registry es la vía soportada.
-     * Acepta tanto "ENTITY_PLAYER_LEVELUP" como "minecraft:entity_player_levelup".
-     * Devuelve null (con warning en consola) si el nombre es inválido.
+     * Resuelve un nombre de sonido aceptando dos formatos:
+     *
+     *  1. Key de Minecraft (recomendado): "entity.player.levelup" o con
+     *     namespace "minecraft:entity.player.levelup". OJO: las keys reales
+     *     usan PUNTOS como separadores (entity.experience_orb.pickup), no
+     *     guiones bajos — por eso el lookup puramente mecánico fallaba.
+     *
+     *  2. Nombre de enum legacy: "ENTITY_PLAYER_LEVELUP" (el formato del
+     *     config histórico). Sound.valueOf está deprecado en Paper, pero es
+     *     la única vía exacta para este formato porque la conversión
+     *     enum→key es ambigua (experience_orb contiene un _ real).
+     *     El warning de deprecación se suprime localmente a propósito.
+     *
+     * @return el sonido, o null (con warning en consola) si es inválido.
      */
+    @SuppressWarnings("deprecation")
     private org.bukkit.Sound parseSound(String name, String hologramId) {
-        String normalized = name.trim().toLowerCase(Locale.ROOT);
+        String trimmed = name.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
 
-        org.bukkit.NamespacedKey key = normalized.contains(":")
-                ? org.bukkit.NamespacedKey.fromString(normalized)
-                : org.bukkit.NamespacedKey.minecraft(normalized);
-
-        if (key == null) {
-            plugin.getLogger().warning("Invalid sound '" + name
-                    + "' in hologram '" + hologramId + "'.");
-            return null;
+        // Formato 1: key de Minecraft ("entity.player.levelup" / "minecraft:...")
+        if (lower.contains(".") || lower.contains(":")) {
+            org.bukkit.NamespacedKey key = lower.contains(":")
+                    ? org.bukkit.NamespacedKey.fromString(lower)
+                    : org.bukkit.NamespacedKey.minecraft(lower);
+            if (key != null) {
+                org.bukkit.Sound sound = RegistryAccess.registryAccess()
+                        .getRegistry(RegistryKey.SOUND_EVENT)
+                        .get(key);
+                if (sound != null) return sound;
+            }
         }
 
-        org.bukkit.Sound sound = RegistryAccess.registryAccess()
-                .getRegistry(RegistryKey.SOUND_EVENT)
-                .get(key);
+        // Formato 2: nombre de enum legacy ("ENTITY_PLAYER_LEVELUP")
+        try {
+            return org.bukkit.Sound.valueOf(trimmed.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {}
 
-        if (sound == null) {
-            plugin.getLogger().warning("Invalid sound '" + name
-                    + "' in hologram '" + hologramId + "'.");
-        }
-        return sound;
+        plugin.getLogger().warning("Invalid sound '" + name
+                + "' in hologram '" + hologramId + "'.");
+        return null;
     }
 
     private void playSound(Player player, String soundName, float volume,
