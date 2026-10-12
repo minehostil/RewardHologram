@@ -38,15 +38,16 @@ holograms:
 
     click-type: RIGHT
 
-    # Lines — supports & codes and hex &#RRGGBB.
-    # Two formats (mixable): simple string, or map with text + scale.
-    # "scale" only applies with DISPLAY renderer.
+    # Hologram lines — supports & codes and hex &#RRGGBB.
+    # Optional inline placeholder for per-line scale (DISPLAY renderer only):
+    #   "{line_scale:1.2}your text here"
+    # scale defaults to 1.0 when the placeholder is absent.
+    # WARNING: quote the line when using the placeholder —
+    # YAML treats a leading { as a mapping and would break the config.
     lines:
-      - text: "&#FFD700&l✦ DAILY REWARD ✦"
-        scale: 1.2
+      - "{line_scale:1.2}&#FFD700&l✦ DAILY REWARD ✦"
       - "&eClick to &aclaim"
-      - text: "&#00BFFF&7Double XP for 10 minutes"
-        scale: 0.9
+      - "{line_scale:0.9}&#00BFFF&7Double XP for 10 minutes"
       - "&bJust for you!"
 
     rewards:
