@@ -1,35 +1,29 @@
 package dev.rewardhologram.listener;
 
 import dev.rewardhologram.RewardHologramPlugin;
+import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.HologramData;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
-import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.util.RayTraceResult;
 
 import java.util.stream.Collectors;
 
 public class HologramListener implements Listener {
-
-    /**
-     * Alcance del ray para el clic izquierdo. El cliente solo permite
-     * atacar entidades a ~3 bloques; 4 da margen por latencia.
-     */
-    private static final double ATTACK_REACH = 4.0;
 
     private final RewardHologramPlugin plugin;
 
@@ -37,32 +31,23 @@ public class HologramListener implements Listener {
         this.plugin = plugin;
     }
 
-    // ─── Clic derecho ─────────────────────────────────────────────────────────
+    // ─── Clic derecho directo (armor stands) ───────────────────────────────────
 
     /**
-     * Clic derecho sobre ARMOR STANDS — disparan PlayerInteractAtEntityEvent
-     * (el paquete INTERACT_AT es exclusivo de esta entidad en el cliente vanilla).
+     * Clic derecho sobre armor stands. Disparan PlayerInteractAtEntityEvent,
+     * que es subclase de PlayerInteractEntityEvent — un único handler cubre
+     * ambos. Las displays NUNCA disparan este evento (el cliente no las
+     * considera "pickable") — esas van por el ray trace de más abajo.
      */
     @EventHandler
-    public void onInteractArmorStand(PlayerInteractAtEntityEvent event) {
-        if (!(event.getRightClicked() instanceof ArmorStand)) return;
-        handleRightClick(event.getPlayer(), event.getRightClicked(), event);
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        Entity clicked = event.getRightClicked();
+        if (!(clicked instanceof ArmorStand) && !(clicked instanceof Display)) return;
+        handleRightClickDirect(event.getPlayer(), clicked, event);
     }
 
-    /**
-     * Clic derecho sobre DISPLAY ENTITIES — disparan el genérico
-     * PlayerInteractEntityEvent (el cliente no envía INTERACT_AT para displays).
-     * El guard evita re-procesar eventos At que ya manejó onInteractArmorStand.
-     */
-    @EventHandler
-    public void onInteractDisplay(PlayerInteractEntityEvent event) {
-        if (event instanceof PlayerInteractAtEntityEvent) return;
-        if (!(event.getRightClicked() instanceof Display)) return;
-        handleRightClick(event.getPlayer(), event.getRightClicked(), event);
-    }
-
-    private void handleRightClick(Player player, Entity clicked,
-                                  PlayerInteractEntityEvent event) {
+    private void handleRightClickDirect(Player player, Entity clicked,
+                                        PlayerInteractEntityEvent event) {
         String ownerStr = clicked.getPersistentDataContainer()
                 .get(plugin.getOwnerKey(), PersistentDataType.STRING);
         String hologramId = clicked.getPersistentDataContainer()
@@ -79,80 +64,74 @@ public class HologramListener implements Listener {
 
         HologramData data = plugin.getHologramManager().getDefinition(hologramId);
         if (data == null) return;
-
-        HologramData.ClickType type = data.getClickType();
-        if (type == HologramData.ClickType.LEFT) return;
+        if (data.getClickType() == HologramData.ClickType.LEFT) return;
 
         claim(player, data, hologramId);
     }
 
-    // ─── Clic izquierdo ───────────────────────────────────────────────────────
+    // ─── Clic derecho por ray trace (DISPLAY) ──────────────────────────────────
 
     /**
-     * Clic izquierdo sobre cualquier entidad del plugin — vía arm swing + ray trace.
+     * Fallback de clic derecho para hologramas DISPLAY.
      *
-     * Por qué este enfoque y no eventos de daño:
-     *  1. Las displays no son LivingEntity y al ser invulnerables NUNCA generan
-     *     EntityDamageByEntityEvent.
-     *  2. Nuestras entidades son invulnerables (setInvulnerable(true)) — el check
-     *     isInvulnerableTo() aborta el daño ANTES de disparar el evento de daño,
-     *     así que ese evento tampoco llega para los armor stands del plugin.
-     *
-     * El paquete de swing del brazo se envía en TODO clic izquierdo, incluso con
-     * una entidad en la mira — PlayerAnimationEvent es un punto de enganche
-     * fiable en cualquier versión de la API. rayTraceEntities() reproduce el
-     * cálculo de objetivo del cliente.
+     * El cliente vanilla NO considera las displays "pickable" (no son
+     * LivingEntity), así que NUNCA envía el paquete de interacción hacia
+     * ellas — el clic se convierte en uso normal de ítem/bloque. Este
+     * handler intercepta ese clic y lo convierte en claim cuando el ray
+     * del servidor golpea el AABB del holograma del propio jugador.
      */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler
+    public void onRightClickRay(PlayerInteractEvent event) {
+        Action action = event.getAction();
+        if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
+        if (event.getHand() != EquipmentSlot.HAND) return; // un solo ray por clic físico
+
+        Player player = event.getPlayer();
+
+        ActiveHologram hit = plugin.getHologramManager().rayTraceHologram(player);
+        if (hit == null) return;
+
+        // El holograma intercepta el clic — evita colocar bloques
+        // o consumir ítems "a través" del holograma
+        event.setCancelled(true);
+
+        HologramData data = plugin.getHologramManager().getDefinition(hit.getHologramId());
+        if (data == null) return;
+        if (data.getClickType() == HologramData.ClickType.LEFT) return;
+
+        claim(player, data, hit.getHologramId());
+    }
+
+    // ─── Clic izquierdo por ray trace (DISPLAY) ────────────────────────────────
+
+    /**
+     * Clic izquierdo sobre hologramas DISPLAY vía arm swing + ray trace.
+     * Las displays no generan eventos de daño (no son LivingEntity y son
+     * invulnerables), pero el paquete de swing del brazo se envía en TODO
+     * clic izquierdo — es el punto de enganche fiable.
+     */
+    @EventHandler
     public void onArmSwing(PlayerAnimationEvent event) {
         if (event.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
 
         Player player = event.getPlayer();
 
-        // Chequeo barato (map lookup) antes del ray trace — el 99% de los swings
-        // (minería, combate) ocurre sin ningún holograma activo del jugador
-        if (!plugin.getHologramManager().hasActiveHolograms(player.getUniqueId())) return;
+        ActiveHologram hit = plugin.getHologramManager().rayTraceHologram(player);
+        if (hit == null) return;
 
-        RayTraceResult entityHit = player.rayTraceEntities((int) ATTACK_REACH, true);
-        if (entityHit == null || entityHit.getHitEntity() == null) return;
-
-        // Si hay un bloque más cerca que la entidad, el ataque va al bloque,
-        // no al holograma (evita reclamos al minar "a través" del holograma)
-        RayTraceResult blockHit = player.getWorld().rayTraceBlocks(
-                player.getEyeLocation(),
-                player.getEyeLocation().getDirection(),
-                ATTACK_REACH, FluidCollisionMode.NEVER, true);
-        if (blockHit != null && entityHit.getHitPosition()
-                .distanceSquared(player.getEyeLocation().toVector())
-                > blockHit.getHitPosition()
-                .distanceSquared(player.getEyeLocation().toVector())) {
-            return;
-        }
-
-        Entity hit = entityHit.getHitEntity();
-
-        String ownerStr = hit.getPersistentDataContainer()
-                .get(plugin.getOwnerKey(), PersistentDataType.STRING);
-        String hologramId = hit.getPersistentDataContainer()
-                .get(plugin.getHologramIdKey(), PersistentDataType.STRING);
-
-        if (ownerStr == null || hologramId == null) return;
-
-        if (!player.getUniqueId().toString().equals(ownerStr)) return;
-
-        HologramData data = plugin.getHologramManager().getDefinition(hologramId);
+        HologramData data = plugin.getHologramManager().getDefinition(hit.getHologramId());
         if (data == null) return;
+        if (data.getClickType() == HologramData.ClickType.RIGHT) return;
 
-        HologramData.ClickType type = data.getClickType();
-        if (type == HologramData.ClickType.RIGHT) return;
-
-        claim(player, data, hologramId);
+        claim(player, data, hit.getHologramId());
     }
 
+    // ─── Clic izquierdo directo (armor stands — red de seguridad) ──────────────
+
     /**
-     * Red de seguridad: cancela daño a armor stands del plugin y reclama
-     * si el evento llegara a dispararse (el claim es idempotente — cooldown
-     * + remoción previa — así que la recompensa se da una sola vez).
+     * El claim es idempotente (cooldown + remoción previa), así que aunque
+     * este handler y otro mecanismo procesen el mismo clic, la recompensa
+     * se da una sola vez.
      */
     @EventHandler
     public void onArmorStandDamage(EntityDamageByEntityEvent event) {
@@ -172,9 +151,7 @@ public class HologramListener implements Listener {
 
         HologramData data = plugin.getHologramManager().getDefinition(hologramId);
         if (data == null) return;
-
-        HologramData.ClickType type = data.getClickType();
-        if (type == HologramData.ClickType.RIGHT) return;
+        if (data.getClickType() == HologramData.ClickType.RIGHT) return;
 
         claim(player, data, hologramId);
     }
