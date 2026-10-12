@@ -1,48 +1,93 @@
 # ============================================================
 #                   RewardHologram Config
 # ============================================================
+# Per-player reward holograms with bobbing animation.
+# Create as many holograms as you want with unique IDs under
+# the "holograms" section.
+# ============================================================
 
 settings:
+  # Debug mode — logs extra information to the console.
   debug: false
-  # Cooldown in milliseconds between allowed clicks per player (prevents spam)
+
+  # Cooldown in milliseconds between allowed clicks per player.
+  # Prevents spam-clicking a hologram to trigger rewards repeatedly.
+  # 500 = half a second, 1000 = 1 second.
   click-cooldown-ms: 500
-  # Default rendering engine: ARMOR_STAND or DISPLAY
-  #   ARMOR_STAND — maximum compatibility (Java + Bedrock/Geyser)
-  #   DISPLAY     — TextDisplay/ItemDisplay (1.19.4+): scale, glow, billboard,
-  #                 per-line text sizes, advanced skull animations, smooth
-  #                 pop-in/pop-out. On Bedrock (Geyser) support depends on
-  #                 your Geyser version — use ARMOR_STAND if Bedrock matters.
+
+  # Default rendering engine used by holograms that have "renderer: DEFAULT".
+  #   ARMOR_STAND — classic armor stand holograms. Maximum compatibility
+  #                 (works for Java and Bedrock players via Geyser).
+  #                 Ignores display.* options, per-line scale and smooth
+  #                 pop-in/pop-out animations.
+  #   DISPLAY     — TextDisplay/ItemDisplay entities (Minecraft 1.19.4+).
+  #                 Enables billboard modes, global and per-line scale,
+  #                 glow with color, text styling options, advanced skull
+  #                 animations (squash, tilt) and smooth POP appear/despawn.
+  #                 Bedrock (Geyser) support depends on your Geyser version —
+  #                 use ARMOR_STAND if Bedrock compatibility matters.
   renderer: DISPLAY
 
+# ============================================================
+# Reward holograms
+# ============================================================
 holograms:
 
   daily_reward:
-    # Renderer for THIS hologram: ARMOR_STAND, DISPLAY or DEFAULT (uses settings.renderer)
+    # Renderer for THIS hologram only.
+    #   DEFAULT     — uses settings.renderer from above
+    #   ARMOR_STAND — forces armor stands for this hologram
+    #   DISPLAY     — forces display entities for this hologram
     renderer: DEFAULT
 
+    # Spawn probability (0.0 - 100.0). Evaluated once per second after
+    # the interval has elapsed. 30.0 = 30% chance per second.
     chance: 30.0
+
+    # Seconds between each spawn evaluation per player.
+    # The hologram cannot spawn again until this interval has passed,
+    # even after being claimed.
     interval: 600
+
+    # Seconds until the hologram disappears if not claimed.
     despawn-after: 20
 
+    # Position offset relative to the player.
+    # z is "in front of the player" based on where they are looking.
     offset:
+      # Horizontal shift left(-)/right(+) relative to player's facing.
       x: 0.0
+      # Vertical shift up(+)/down(-).
       y: 1.5
+      # Distance in front of the player.
       z: 2.5
 
+    # Bobbing animation (up and down floating movement).
     bobbing:
+      # Enable/disable the vertical movement.
       enabled: true
+      # Amplitude in blocks — how high/low it moves from its base position.
       amplitude: 0.15
+      # Oscillation speed — higher = faster bobbing.
       speed: 0.05
 
+    # Spacing between hologram lines in blocks.
     line-spacing: 0.28
 
+    # Click type required to claim the reward:
+    #   RIGHT — right-click only
+    #   LEFT  — left-click (attack) only
+    #   BOTH  — either click works
     click-type: RIGHT
 
-    # Hologram lines — supports & codes and hex &#RRGGBB.
-    # Optional inline placeholder for per-line scale (DISPLAY renderer only):
+    # Hologram lines — supports & color codes and hex colors &#RRGGBB.
+    #
+    # Optional inline placeholder for per-line text scale
+    # (DISPLAY renderer only — ignored on ARMOR_STAND):
     #   "{line_scale:1.2}your text here"
-    # scale defaults to 1.0 when the placeholder is absent.
-    # WARNING: quote the line when using the placeholder —
+    # Lines without the placeholder use scale 1.0.
+    #
+    # WARNING: always put the line in quotes when using the placeholder —
     # YAML treats a leading { as a mapping and would break the config.
     lines:
       - "{line_scale:1.2}&#FFD700&l✦ DAILY REWARD ✦"
@@ -50,107 +95,188 @@ holograms:
       - "{line_scale:0.9}&#00BFFF&7Double XP for 10 minutes"
       - "&bJust for you!"
 
+    # Reward list with individual chances.
     rewards:
+      # How many rewards to pick from the list when claimed:
+      #   -1 = evaluate ALL rewards, each one rolls its own chance
+      #    1 = pick 1 at random and roll its chance
+      #    2 = pick 2 at random and roll their chances
+      #    N = pick N at random (capped at list size)
       pick: -1
       list:
+        # %player% is replaced with the claiming player's name.
         - command: "give %player% diamond 3"
-          chance: 100.0
+          chance: 100.0   # Always given
         - command: "effect give %player% speed 600 1"
-          chance: 50.0
+          chance: 50.0    # 50% probability
         - command: "give %player% emerald 1"
-          chance: 25.0
+          chance: 25.0    # 25% probability
 
+    # Chat message when the hologram appears (%player% available).
+    # Set to "" to disable.
     appear-message: "&6&l[Reward] &eYou have a reward available! Look in front of you."
+
+    # Chat message when the player claims the reward.
+    # Set to "" to disable.
     claim-message: "&a&l[Reward] &fYou claimed your daily reward! &7Come back in 10 minutes."
 
+    # Title shown on screen when the hologram appears.
     title:
+      # Enable/disable the title.
       enabled: true
+      # Main title text (large, center of screen).
       title: "&6&l✦ REWARD ✦"
+      # Subtitle text (smaller, below the title).
       subtitle: "&eA reward appeared in front of you"
+      # All times in ticks (20 ticks = 1 second).
       fade-in: 10
       stay: 60
       fade-out: 20
 
+    # Sound played when the hologram appears.
+    # Sound list: https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Sound.html
     sound:
+      # Enable/disable the sound.
       enabled: true
+      # Sound name (without the minecraft: prefix).
       name: "ENTITY_EXPERIENCE_ORB_PICKUP"
+      # Volume (0.0 - 1.0+).
       volume: 1.0
+      # Pitch (0.5 = low, 1.0 = normal, 2.0 = high).
       pitch: 1.2
 
-    # ── DISPLAY-only options ──────────────────────────────────────────────
+    # ── DISPLAY-only options (ignored with ARMOR_STAND renderer) ─────────
     display:
-      # CENTER: always faces the player (like armor stand nametags)
-      # VERTICAL / HORIZONTAL / FIXED also available
+      # Billboard mode — how the entities rotate to face viewers:
+      #   CENTER     — rotates both horizontally and vertically (always faces the player)
+      #   VERTICAL   — rotates only around the vertical axis (turns left/right)
+      #   HORIZONTAL — rotates only around the horizontal axis (pitches up/down)
+      #   FIXED      — no auto-rotation, stays in a fixed orientation
       billboard: CENTER
-      # Global scale — multiplies every line and the skull
+
+      # Global scale — multiplies every line and the skull.
+      # 1.0 = normal size, 1.5 = 50% bigger, 0.5 = half size.
       scale: 1.0
-      # Glow outline (color applied via scoreboard team)
+
+      # Glowing outline around all hologram entities.
       glow:
+        # Enable/disable the glow effect.
         enabled: false
-        color: YELLOW    # WHITE, RED, GOLD, YELLOW, GREEN, AQUA, BLUE, LIGHT_PURPLE...
+        # Glow color: WHITE, RED, GOLD, YELLOW, GREEN, AQUA, BLUE,
+        # LIGHT_PURPLE, DARK_* variants, BLACK, GRAY...
+        color: YELLOW
+
+      # Text styling for the hologram lines.
       text:
-        # Drop shadow behind the characters
+        # Drop shadow behind the text characters.
         shadowed: true
-        # Whether the text is visible through walls
+        # Whether the text is visible through solid walls.
         see-through: false
-        # TRANSPARENT (classic hologram look) or DEFAULT (semi-opaque panel)
+        # Text background style:
+        #   TRANSPARENT — fully invisible background (classic hologram look)
+        #   DEFAULT     — vanilla semi-opaque dark panel behind the text
         background: TRANSPARENT
 
-    # Appear effects — animation is DISPLAY-only; particles work on both renderers
+    # Effects when the hologram APPEARS.
     appear:
-      animation: POP        # NONE or POP (scale 0 -> 1, interpolated)
+      # Animation on spawn (DISPLAY renderer only):
+      #   NONE — entities appear instantly at full size
+      #   POP  — entities scale up from ~0 to full size, smoothly interpolated
+      animation: POP
+      # Duration of the POP animation in ticks (higher = slower/bigger feel).
       duration-ticks: 6
+      # Particles spawned at the hologram's center on appear.
+      # These work with BOTH renderers (armor stand and display).
       particles:
+        # Enable/disable appear particles.
         enabled: true
-        # Avoid particles that require data (DUST, ITEM, BLOCK...) — they are skipped
+        # Particle type. Use types that don't require extra data —
+        # avoid DUST, ITEM, BLOCK, FALLING_* etc. (they are skipped with a warning).
         type: TOTEM_OF_UNDYING
+        # Number of particles spawned.
         count: 25
+        # Spread radius on each axis (how far particles scatter).
         spread: 0.5
+        # Particle motion speed.
         speed: 0.1
 
-    # Despawn effects — POP animates scale down before removal (DISPLAY only)
+    # Effects when the hologram DESPAWNS (timeout or claim).
     despawn:
+      # Animation on removal (DISPLAY renderer only):
+      #   NONE — entities vanish instantly
+      #   POP  — entities shrink down to ~0 before being removed
+      # While animating out, the hologram can no longer be claimed.
       animation: POP
+      # Duration of the POP-out animation in ticks.
       duration-ticks: 6
+      # Particles spawned at the hologram's center on despawn.
+      # These work with BOTH renderers (armor stand and display).
       particles:
+        # Enable/disable despawn particles.
         enabled: true
+        # Particle type (same restrictions as appear particles).
         type: CLOUD
         count: 15
         spread: 0.4
         speed: 0.05
 
+    # Custom skull displayed at the top of the hologram.
     skull:
+      # Enable/disable the skull.
       enabled: true
+      # Base64 texture (get it from minecraft-heads.com — copy the "Value" field).
       texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMjhkYzNjODQ0OTFjNGZmMTAzZGU2ZWEwMTg4MGUyZDgzNDMyY2Q0ODc4Yjg0ZDZiNDMyNTNjYzUxZmQ5NzhlNyJ9fX0="
+      # Initial head angle (0 = north, 90 = east, 180 = south, 270 = west).
       head-yaw: 0.0
-      # DISPLAY: the skull is centered on its position — adjust this if it looks too high/low
+      # Extra height above the last line.
+      # Increase if the skull overlaps the lines, decrease if there's a gap.
+      # Note: with DISPLAY the skull is centered on its position, so it may
+      # need a different value than with ARMOR_STAND.
       height-offset: 0.7
-      # Size of the skull with DISPLAY (1.0 = item size; try 1.5-2.0 for a bigger look)
+      # Skull size with the DISPLAY renderer (1.0 = item size).
+      # Try 1.5 - 2.0 for a bigger, more visible head.
+      # Ignored with ARMOR_STAND.
       scale: 1.0
+      # Automatic continuous Y rotation of the skull.
       rotation:
+        # Enable/disable the spinning.
         enabled: true
+        # Degrees per tick — at 2.0 a full 360° rotation takes ~9 seconds.
         speed: 2.0
-      # Advanced skull animations — DISPLAY only
+      # Advanced skull animations — DISPLAY renderer only.
       effects:
         # Squash & stretch — the head squashes and stretches like a cartoon
+        # (compresses on one axis while expanding on the others).
         squash:
+          # Enable/disable the squash effect.
           enabled: true
-          amplitude: 0.10   # How much it deforms (0.1 = subtle)
-          speed: 0.15       # Oscillation speed
-        # Slicon lateral tilt (left/right lean)
+          # Deformation intensity (0.1 = subtle, 0.3 = very cartoonish).
+          amplitude: 0.10
+          # Oscillation speed — higher = faster squash cycle.
+          speed: 0.15
+        # Sway — subtle left/right leaning of the head.
         tilt:
+          # Enable/disable the tilt effect.
           enabled: true
-          amplitude: 8.0    # Degrees
+          # Maximum lean in degrees each side (8 = subtle, 20 = dramatic).
+          amplitude: 8.0
+          # Oscillation speed — higher = faster swaying.
           speed: 0.06
 
+    # Sound played when the reward is claimed.
     claim-sound:
+      # Enable/disable the sound.
       enabled: true
+      # Sound name (without the minecraft: prefix).
       name: "ENTITY_PLAYER_LEVELUP"
+      # Volume (0.0 - 1.0+).
       volume: 1.0
+      # Pitch (0.5 = low, 1.0 = normal, 2.0 = high).
       pitch: 1.5
 
   bonus_reward:
     renderer: DEFAULT
+
     chance: 10.0
     interval: 1800
     despawn-after: 15
@@ -166,6 +292,8 @@ holograms:
       speed: 0.08
 
     line-spacing: 0.28
+
+    # BOTH allows claiming with either right or left click.
     click-type: BOTH
 
     lines:
@@ -174,6 +302,7 @@ holograms:
       - "&#00FF7F&a+500 Coins"
 
     rewards:
+      # Pick 1 reward at random from the list and roll its chance.
       pick: 1
       list:
         - command: "eco give %player% 500"
