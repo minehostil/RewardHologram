@@ -841,6 +841,9 @@ public class HologramManager {
         for (Entity entity : center.getWorld().getNearbyEntities(center, radius, radius, radius)) {
             if (!(entity instanceof ArmorStand) && !(entity instanceof Display)) continue;
             if (entity.getLocation().distanceSquared(center) > radiusSq) continue;
+            if (!(entity instanceof ArmorStand)
+                    && !(entity instanceof Display)
+                    && !(entity instanceof Interaction)) continue;
 
             String ownerStr = entity.getPersistentDataContainer()
                     .get(ownerKey, org.bukkit.persistence.PersistentDataType.STRING);
