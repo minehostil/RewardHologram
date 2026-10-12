@@ -3,6 +3,7 @@ package dev.rewardhologram.hologram;
 import dev.rewardhologram.RewardHologramPlugin;
 import dev.rewardhologram.model.HologramData;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -11,7 +12,25 @@ import org.bukkit.persistence.PersistentDataType;
 
 public final class HologramUtil {
 
+    /**
+     * Prefijo compartido de los teams de scoreboard usados para el glow.
+     * Los nombres de team tienen un límite de 16 caracteres:
+     * "rh_" (3) + el nombre de color más largo, LIGHT_PURPLE (12) = 15. Seguro.
+     * El prefijo anterior "rh_glow_" excedía el límite con colores largos y el
+     * registro del team fallaba silenciosamente.
+     */
+    public static final String GLOW_TEAM_PREFIX = "rh_";
+
     private HologramUtil() {}
+
+    /**
+     * Nombre del team de glow para un color.
+     * Fuente única de verdad — usada por DisplayHologram (registro) y
+     * HologramManager (limpieza), así nunca se desincronizan.
+     */
+    public static String glowTeamName(ChatColor color) {
+        return GLOW_TEAM_PREFIX + color.name();
+    }
 
     /** Calcula la posición base del holograma delante del jugador según sus offsets. */
     public static Location calculateBaseLocation(Player player, HologramData data) {
