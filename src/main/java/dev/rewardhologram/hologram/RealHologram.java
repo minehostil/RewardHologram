@@ -7,14 +7,13 @@ import dev.rewardhologram.util.ColorUtil;
 import dev.rewardhologram.util.SkullUtil;
 import org.bukkit.Location;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -22,7 +21,7 @@ import java.util.List;
  * Funciona para todos los jugadores (Java y Bedrock vía Geyser).
  * Sin dependencia de PacketEvents.
  */
-public class RealHologram {
+public class RealHologram implements Hologram {
 
     private final RewardHologramPlugin plugin;
     private final Player player;
@@ -35,15 +34,14 @@ public class RealHologram {
     }
 
     // Un armor stand normal (small=false) muestra el nombre ~2.35 bloques arriba de su Y base.
-    // Para que las líneas queden donde queremos hay que bajar cada stand ese offset.
     private static final double NAME_TAG_OFFSET = 2.35;
-
     // La skull (small=true) muestra el casco ~1.075 bloques arriba de su Y base.
     private static final double SKULL_OFFSET = 1.075;
 
+    @Override
     public ActiveHologram spawn() {
-        Location base = calculateBaseLocation();
-        List<ArmorStand> entities = new ArrayList<>();
+        Location base = HologramUtil.calculateBaseLocation(player, data);
+        List<Entity> entities = new ArrayList<>();
 
         int totalLines = data.getLines().size();
         double spacing = data.getLineSpacing();
@@ -51,38 +49,50 @@ public class RealHologram {
         // Skull encima de todas las líneas con offset configurable
         if (data.isSkullEnabled()) {
             double skullVisualY = (totalLines - 1) * spacing + spacing + data.getSkullHeightOffset();
-            double skullSpawnY  = skullVisualY - SKULL_OFFSET;
-            entities.add(spawnSkullStand(base.clone().add(0, skullSpawnY, 0)));
+            entities.add(spawnSkullStand(base.clone().add(0, skullVisualY - SKULL_OFFSET, 0)));
         }
 
         // Líneas de texto — la primera (i=0) es la más alta
         for (int i = 0; i < totalLines; i++) {
             double lineVisualY = (totalLines - 1 - i) * spacing;
-            double lineSpawnY  = lineVisualY - NAME_TAG_OFFSET;
-            entities.add(spawnTextStand(base.clone().add(0, lineSpawnY, 0), data.getLines().get(i)));
+            entities.add(spawnTextStand(base.clone().add(0, lineVisualY - NAME_TAG_OFFSET, 0), data.getLines().get(i)));
         }
 
-        entities.forEach(as -> {
-            as.getPersistentDataContainer().set(
-                    plugin.getOwnerKey(), PersistentDataType.STRING,
-                    player.getUniqueId().toString());
-            as.getPersistentDataContainer().set(
-                    plugin.getHologramIdKey(), PersistentDataType.STRING,
-                    data.getId());
-        });
+        entities.forEach(e -> HologramUtil.tagEntity(e, plugin, player, data.getId()));
 
         return new ActiveHologram(data.getId(), ActiveHologram.Type.REAL,
-                Collections.emptyList(), entities, base.getY(), data.getSkullHeadYaw());
+                entities, base.clone(), data.getSkullHeadYaw());
     }
 
-    public void teleportEntities(ActiveHologram active, double newY) {
-        List<ArmorStand> entities = active.getRealEntities();
+    @Override
+    public void tick(ActiveHologram active) {
+        // La fase siempre avanza para mantener el estado consistente
+        active.incrementPhase(data.getBobbingSpeed());
+
+        if (data.isSkullEnabled() && data.isSkullRotationEnabled())
+            active.incrementYaw(data.getSkullRotationSpeed());
+
+        double bob = data.isBobbingEnabled()
+                ? Math.sin(active.getBobbingPhase()) * data.getBobbingAmplitude()
+                : 0;
+        teleportEntities(active, active.getBaseY() + bob);
+    }
+
+    @Override
+    public void destroy(ActiveHologram active) {
+        active.getEntities().forEach(HologramUtil::removeEntitySafely);
+    }
+
+    // ─── Internals ─────────────────────────────────────────────────────────────
+
+    private void teleportEntities(ActiveHologram active, double newY) {
+        List<Entity> entities = active.getEntities();
         int totalLines = data.getLines().size();
         double spacing = data.getLineSpacing();
         int idx = 0;
 
         if (data.isSkullEnabled() && !entities.isEmpty()) {
-            ArmorStand skull = entities.get(idx++);
+            Entity skull = entities.get(idx++);
             if (!skull.isDead()) {
                 Location loc = skull.getLocation();
                 double skullVisualY = (totalLines - 1) * spacing + spacing + data.getSkullHeightOffset();
@@ -93,7 +103,7 @@ public class RealHologram {
         }
 
         for (int i = 0; i < totalLines && idx < entities.size(); i++, idx++) {
-            ArmorStand as = entities.get(idx);
+            Entity as = entities.get(idx);
             if (!as.isDead()) {
                 Location loc = as.getLocation();
                 double lineVisualY = (totalLines - 1 - i) * spacing;
@@ -102,26 +112,6 @@ public class RealHologram {
             }
         }
     }
-
-    public void destroy(ActiveHologram active) {
-        active.getRealEntities().forEach(as -> {
-            if (as == null) return;
-            // Intentar eliminar por referencia directa
-            if (!as.isDead()) {
-                as.remove();
-            } else {
-                // Si la referencia dice que está muerta pero visualmente sigue ahí,
-                // buscarla por UUID en el mundo y eliminarla
-                try {
-                    org.bukkit.entity.Entity entity =
-                            org.bukkit.Bukkit.getEntity(as.getUniqueId());
-                    if (entity != null && !entity.isDead()) entity.remove();
-                } catch (Exception ignored) {}
-            }
-        });
-    }
-
-    // ─── Internals ─────────────────────────────────────────────────────────────
 
     private ArmorStand spawnTextStand(Location loc, String text) {
         ArmorStand as = (ArmorStand) loc.getWorld().spawnEntity(loc, EntityType.ARMOR_STAND);
@@ -136,6 +126,7 @@ public class RealHologram {
         as.setMarker(false);     // Sin marker — habilita el hitbox de clic
         as.setArms(false);
         as.setBasePlate(false);
+        as.setPersistent(false); // No persistir en el mundo — evita huérfanos
         return as;
     }
 
@@ -149,19 +140,12 @@ public class RealHologram {
         as.setCollidable(false);
         as.setInvulnerable(true);
         as.setCanPickupItems(false);
+        as.setPersistent(false);
 
         ItemStack skull = SkullUtil.createSkull(data.getSkullTexture());
         EntityEquipment eq = as.getEquipment();
         if (eq != null) eq.setHelmet(skull);
 
         return as;
-    }
-
-    private Location calculateBaseLocation() {
-        Location loc = player.getLocation().clone();
-        double yaw = Math.toRadians(loc.getYaw());
-        double dx = -Math.sin(yaw) * data.getOffsetZ() + data.getOffsetX();
-        double dz =  Math.cos(yaw) * data.getOffsetZ();
-        return loc.add(dx, data.getOffsetY(), dz);
     }
 }
