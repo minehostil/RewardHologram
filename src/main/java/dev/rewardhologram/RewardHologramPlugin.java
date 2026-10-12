@@ -10,6 +10,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
@@ -33,7 +34,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
         ownerKey      = new NamespacedKey(this, "hologram_owner");
         hologramIdKey = new NamespacedKey(this, "hologram_id");
 
-        cleanOrphanedArmorStands();
+        cleanOrphanedEntities();
 
         hologramManager = new HologramManager(this);
 
@@ -60,18 +61,30 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
 
     // ─── Limpieza post-reinicio ────────────────────────────────────────────────
 
-    private void cleanOrphanedArmorStands() {
+    /**
+     * Elimina entidades de hologramas huérfanas de una sesión anterior.
+     * Cubre tanto armor stands (ARMOR_STAND renderer) como display entities
+     * (DISPLAY renderer) vía la PDC key del dueño.
+     * Nota: las entidades nuevas ya no se persisten (setPersistent(false)),
+     * así que esta limpieza queda como red de seguridad para entidades
+     * creadas por versiones anteriores del plugin.
+     */
+    private void cleanOrphanedEntities() {
         int removed = 0;
         for (org.bukkit.World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
-                if (!(entity instanceof ArmorStand as)) continue;
-                String owner = as.getPersistentDataContainer()
+                String owner = entity.getPersistentDataContainer()
                         .get(ownerKey, PersistentDataType.STRING);
-                if (owner != null) { as.remove(); removed++; }
+                if (owner == null) continue;
+                // Cubrir armor stands Y display entities
+                if (entity instanceof ArmorStand || entity instanceof Display) {
+                    entity.remove();
+                    removed++;
+                }
             }
         }
         if (removed > 0)
-            getLogger().info("Removed " + removed + " orphaned armor stand(s) from previous session.");
+            getLogger().info("Removed " + removed + " orphaned hologram entity(ies) from previous session.");
     }
 
     // ─── Comandos ─────────────────────────────────────────────────────────────
@@ -98,7 +111,8 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                 hologramManager.getAllDefinitions().forEach(d ->
                         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
                                 "&7- &e" + d.getId() + " &7(chance: &a" + d.getChance()
-                                + "%&7, interval: &a" + d.getInterval() + "s&7)")));
+                                + "%&7, interval: &a" + d.getInterval() + "s&7, renderer: &a"
+                                + d.getRenderer() + "&7)")));
             }
             case "spawn" -> {
                 if (args.length < 3) { sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&cUsage: /rh spawn <id> <player>")); return true; }
@@ -139,10 +153,10 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
                 int removed = hologramManager.removeNear(admin.getLocation(), radius);
                 if (removed == 0) {
                     sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
-                            "&eNo hologram armor stands found within &a" + radius + " &eblocks."));
+                            "&eNo hologram entities found within &a" + radius + " &eblocks."));
                 } else {
                     sender.sendMessage(dev.rewardhologram.util.ColorUtil.color(
-                            "&aRemoved &e" + removed + " &ahologram armor stand(s) within &e" + radius + " &ablocks."));
+                            "&aRemoved &e" + removed + " &ahologram entity(ies) within &e" + radius + " &ablocks."));
                 }
             }
             case "active" -> {
@@ -209,7 +223,7 @@ public class RewardHologramPlugin extends JavaPlugin implements TabCompleter {
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh tpto <player> <id>       &7- Teleport to an active hologram"));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh spawn <id> <player>      &7- Force spawn a hologram for a player"));
         sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh remove <id> <player>     &7- Remove a player's active hologram"));
-        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh removenear [radius]      &7- Remove all hologram stands within radius (default 5)"));
+        sender.sendMessage(dev.rewardhologram.util.ColorUtil.color("&e/rh removenear [radius]      &7- Remove all hologram entities within radius (default 5)"));
     }
 
     // ─── Tab Completer ────────────────────────────────────────────────────────
