@@ -152,7 +152,7 @@ holograms:
       #   VERTICAL   — rotates only around the vertical axis (turns left/right)
       #   HORIZONTAL — rotates only around the horizontal axis (pitches up/down)
       #   FIXED      — no auto-rotation, stays in a fixed orientation
-      billboard: CENTER
+      billboard: VERTICAL
 
       # Global scale — multiplies every line and the skull.
       # 1.0 = normal size, 1.5 = 50% bigger, 0.5 = half size.
