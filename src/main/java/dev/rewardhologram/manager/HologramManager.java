@@ -1,15 +1,36 @@
 package dev.rewardhologram.manager;
 
 import dev.rewardhologram.RewardHologramPlugin;
+import dev.rewardhologram.hologram.DisplayHologram;
+import dev.rewardhologram.hologram.Hologram;
+import dev.rewardhologram.hologram.HologramUtil;
 import dev.rewardhologram.hologram.RealHologram;
 import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.ActiveHologramInfo;
 import dev.rewardhologram.model.HologramData;
+import dev.rewardhologram.model.RewardEntry;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Chunk;
+import org.bukkit.Location;
+import org.bukkit.Particle;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 public class HologramManager {
 
@@ -19,13 +40,28 @@ public class HologramManager {
     private final Map<String, HologramData> hologramDefinitions = new LinkedHashMap<>();
     private final Map<UUID, Map<String, ActiveHologram>> activeHolograms = new HashMap<>();
     private final CooldownManager cooldownManager;
+    private final HologramData.Renderer defaultRenderer;
 
     public HologramManager(RewardHologramPlugin plugin) {
         this.plugin = plugin;
         this.ownerKey = plugin.getOwnerKey();
         this.hologramIdKey = plugin.getHologramIdKey();
         this.cooldownManager = new CooldownManager(plugin);
+        this.defaultRenderer = parseRenderer(
+                plugin.getConfig().getString("settings.renderer", "ARMOR_STAND"));
         loadConfig();
+    }
+
+    // ─── Factory ───────────────────────────────────────────────────────────────
+
+    /** Crea el holograma según el renderer configurado (global o por holograma). */
+    public Hologram createHologram(Player player, HologramData data) {
+        HologramData.Renderer renderer = data.getRenderer() == HologramData.Renderer.DEFAULT
+                ? defaultRenderer
+                : data.getRenderer();
+        return renderer == HologramData.Renderer.DISPLAY
+                ? new DisplayHologram(plugin, player, data)
+                : new RealHologram(plugin, player, data);
     }
 
     // ─── Config ────────────────────────────────────────────────────────────────
@@ -39,63 +75,108 @@ public class HologramManager {
             ConfigurationSection h = section.getConfigurationSection(id);
             if (h == null) continue;
 
-            hologramDefinitions.put(id, new HologramData(
-                    id,
-                    h.getDouble("chance", 25.0),
-                    h.getInt("interval", 300),
-                    h.getInt("despawn-after", 30),
-                    h.getDouble("offset.x", 0),
-                    h.getDouble("offset.y", 1.5),
-                    h.getDouble("offset.z", 2.5),
-                    h.getBoolean("bobbing.enabled", true),
-                    h.getDouble("bobbing.amplitude", 0.15),
-                    h.getDouble("bobbing.speed", 0.05),
-                    h.getStringList("lines"),
-                    parseRewards(h),
-                    h.getInt("rewards.pick", -1),
-                    h.getString("appear-message", ""),
-                    h.getString("claim-message", ""),
-                    h.getBoolean("title.enabled", false),
-                    h.getString("title.title", ""),
-                    h.getString("title.subtitle", ""),
-                    h.getInt("title.fade-in", 10),
-                    h.getInt("title.stay", 60),
-                    h.getInt("title.fade-out", 20),
-                    h.getBoolean("sound.enabled", false),
-                    h.getString("sound.name", "ENTITY_EXPERIENCE_ORB_PICKUP"),
-                    (float) h.getDouble("sound.volume", 1.0),
-                    (float) h.getDouble("sound.pitch", 1.0),
-                    h.getBoolean("skull.enabled", false),
-                    h.getString("skull.texture", "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzgwNWE1ZjkzMTE2N2UxNjYxZTkzNjFkNzk5YzAyNmRkMDJkODJhYzNlNThlZDQxNThkOTlhYmUxMGQ0NiJ9fX0="),
-                    (float) h.getDouble("skull.head-yaw", 0.0),
-                    h.getDouble("skull.height-offset", 0.5),
-                    h.getBoolean("skull.rotation.enabled", false),
-                    (float) h.getDouble("skull.rotation.speed", 2.0),
-                    h.getDouble("line-spacing", 0.28),
-                    h.getBoolean("claim-sound.enabled", false),
-                    h.getString("claim-sound.name", "ENTITY_PLAYER_LEVELUP"),
-                    (float) h.getDouble("claim-sound.volume", 1.0),
-                    (float) h.getDouble("claim-sound.pitch", 1.0),
-                    parseClickType(h.getString("click-type", "RIGHT"))
-            ));
+            // Lines soporta dos formatos mezclables:
+            //   - "texto simple"                    (escala 1.0)
+            //   - { text: "...", scale: 1.3 }       (escala personalizada, DISPLAY)
+            List<String> lines = new ArrayList<>();
+            List<Double> lineScales = new ArrayList<>();
+            parseLines(h, lines, lineScales);
+
+            hologramDefinitions.put(id, HologramData.builder(id)
+                    .chance(h.getDouble("chance", 25.0))
+                    .interval(h.getInt("interval", 300))
+                    .despawnAfter(h.getInt("despawn-after", 30))
+                    .offset(h.getDouble("offset.x", 0),
+                            h.getDouble("offset.y", 1.5),
+                            h.getDouble("offset.z", 2.5))
+                    .bobbing(h.getBoolean("bobbing.enabled", true),
+                            h.getDouble("bobbing.amplitude", 0.15),
+                            h.getDouble("bobbing.speed", 0.05))
+                    .lines(lines, lineScales)
+                    .rewards(parseRewards(h), h.getInt("rewards.pick", -1))
+                    .appearMessage(h.getString("appear-message", ""))
+                    .claimMessage(h.getString("claim-message", ""))
+                    .title(h.getBoolean("title.enabled", false),
+                            h.getString("title.title", ""),
+                            h.getString("title.subtitle", ""),
+                            h.getInt("title.fade-in", 10),
+                            h.getInt("title.stay", 60),
+                            h.getInt("title.fade-out", 20))
+                    .appearSound(h.getBoolean("sound.enabled", false),
+                            h.getString("sound.name", "ENTITY_EXPERIENCE_ORB_PICKUP"),
+                            (float) h.getDouble("sound.volume", 1.0),
+                            (float) h.getDouble("sound.pitch", 1.0))
+                    .skull(h.getBoolean("skull.enabled", false),
+                            h.getString("skull.texture", "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzgwNWE1ZjkzMTE2N2UxNjYxZTkzNjFkNzk5YzAyNmRkMDJkODJhYzNlNThlZDQxNThkOTlhYmUxMGQ0NiJ9fX0="),
+                            (float) h.getDouble("skull.head-yaw", 0.0),
+                            h.getDouble("skull.height-offset", 0.5),
+                            h.getBoolean("skull.rotation.enabled", false),
+                            (float) h.getDouble("skull.rotation.speed", 2.0))
+                    .skullDisplay(h.getDouble("skull.scale", 1.0))
+                    .skullEffects(
+                            h.getBoolean("skull.effects.squash.enabled", false),
+                            h.getDouble("skull.effects.squash.amplitude", 0.12),
+                            h.getDouble("skull.effects.squash.speed", 0.15),
+                            h.getBoolean("skull.effects.tilt.enabled", false),
+                            h.getDouble("skull.effects.tilt.amplitude", 8.0),
+                            h.getDouble("skull.effects.tilt.speed", 0.06))
+                    .lineSpacing(h.getDouble("line-spacing", 0.28))
+                    .renderer(parseRenderer(h.getString("renderer", "DEFAULT")))
+                    .display(
+                            parseBillboard(h.getString("display.billboard", "CENTER")),
+                            h.getDouble("display.scale", 1.0),
+                            h.getBoolean("display.glow.enabled", false),
+                            parseChatColor(h.getString("display.glow.color", "WHITE")),
+                            h.getBoolean("display.text.shadowed", false),
+                            h.getBoolean("display.text.see-through", false),
+                            h.getString("display.text.background", "TRANSPARENT")
+                                    .equalsIgnoreCase("TRANSPARENT"))
+                    .appear(parseSpawnAnimation(h.getString("appear.animation", "NONE")),
+                            h.getInt("appear.duration-ticks", 6))
+                    .appearParticles(
+                            h.getBoolean("appear.particles.enabled", false),
+                            h.getString("appear.particles.type", "TOTEM_OF_UNDYING"),
+                            h.getInt("appear.particles.count", 25),
+                            h.getDouble("appear.particles.spread", 0.5),
+                            h.getDouble("appear.particles.speed", 0.1))
+                    .despawn(parseSpawnAnimation(h.getString("despawn.animation", "NONE")),
+                            h.getInt("despawn.duration-ticks", 6))
+                    .despawnParticles(
+                            h.getBoolean("despawn.particles.enabled", false),
+                            h.getString("despawn.particles.type", "CLOUD"),
+                            h.getInt("despawn.particles.count", 15),
+                            h.getDouble("despawn.particles.spread", 0.4),
+                            h.getDouble("despawn.particles.speed", 0.05))
+                    .claimSound(h.getBoolean("claim-sound.enabled", false),
+                            h.getString("claim-sound.name", "ENTITY_PLAYER_LEVELUP"),
+                            (float) h.getDouble("claim-sound.volume", 1.0),
+                            (float) h.getDouble("claim-sound.pitch", 1.0))
+                    .clickType(parseClickType(h.getString("click-type", "RIGHT")))
+                    .build());
         }
 
-        plugin.getLogger().info("Holograms loaded: " + hologramDefinitions.size());
+        plugin.getLogger().info("Holograms loaded: " + hologramDefinitions.size()
+                + " (renderer: " + defaultRenderer + ")");
     }
 
     // Click cooldown: UUID -> (hologramId -> timestamp ms)
     private final Map<UUID, Map<String, Long>> clickCooldowns = new HashMap<>();
 
+    /**
+     * Solo verifica — SIN efectos secundarios (antes registraba el clic aquí,
+     * lo que podía hacer que executeCommands rechazara un clic válido).
+     */
     public boolean isClickOnCooldown(UUID uuid, String hologramId) {
         long cooldownMs = plugin.getConfig().getLong("settings.click-cooldown-ms", 500L);
         long last = clickCooldowns
                 .getOrDefault(uuid, Collections.emptyMap())
                 .getOrDefault(hologramId, 0L);
-        long now = System.currentTimeMillis();
-        if (now - last < cooldownMs) return true;
-        // Registrar el clic al mismo tiempo
-        clickCooldowns.computeIfAbsent(uuid, k -> new HashMap<>()).put(hologramId, now);
-        return false;
+        return System.currentTimeMillis() - last < cooldownMs;
+    }
+
+    private void recordClick(UUID uuid, String hologramId) {
+        clickCooldowns.computeIfAbsent(uuid, k -> new HashMap<>())
+                .put(hologramId, System.currentTimeMillis());
     }
 
     // ─── Spawn ─────────────────────────────────────────────────────────────────
@@ -117,8 +198,11 @@ public class HologramManager {
         Map<String, ActiveHologram> playerActives = activeHolograms.get(uuid);
         if (playerActives != null && !playerActives.isEmpty()) {
             for (Map.Entry<String, ActiveHologram> entry : new HashMap<>(playerActives).entrySet()) {
-                HologramData existing = hologramDefinitions.get(entry.getKey());
-                if (existing != null) new RealHologram(plugin, player, existing).destroy(entry.getValue());
+                ActiveHologram removed = playerActives.remove(entry.getKey());
+                if (removed == null) continue;
+                List<Entity> oldEntities = new ArrayList<>(removed.getEntities());
+                createHologram(player, data).destroy(removed);
+                releaseTicketsFor(oldEntities);
             }
             playerActives.clear();
         }
@@ -133,20 +217,20 @@ public class HologramManager {
         Map<String, ActiveHologram> playerActives = activeHolograms.get(uuid);
         if (playerActives != null && playerActives.containsKey(data.getId())) {
             ActiveHologram existing = playerActives.remove(data.getId());
-            new RealHologram(plugin, player, data).destroy(existing);
+            List<Entity> oldEntities = new ArrayList<>(existing.getEntities());
+            createHologram(player, data).destroy(existing);
+            releaseTicketsFor(oldEntities);
         }
 
-        ActiveHologram active = new RealHologram(plugin, player, data).spawn();
+        Hologram hologram = createHologram(player, data);
+        ActiveHologram active = hologram.spawn();
         activeHolograms.computeIfAbsent(uuid, k -> new HashMap<>()).put(data.getId(), active);
         cooldownManager.setLastSpawn(uuid, data.getId(), System.currentTimeMillis());
 
         // Anclar los chunks donde están las entidades para que no se descarguen
-        // mientras el holograma esté activo, evitando entidades fantasma
-        active.getRealEntities().forEach(as -> {
-            if (as != null && !as.isDead()) {
-                as.getLocation().getChunk().addPluginChunkTicket(plugin);
-            }
-        });
+        addTickets(active.getEntities());
+
+        if (data.isAppearParticlesEnabled()) spawnHoloParticles(active, data, true);
 
         sendAppearEffects(player, data);
 
@@ -154,8 +238,6 @@ public class HologramManager {
         // que no fue reemplazado por uno más nuevo
         final ActiveHologram spawnedActive = active;
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            // Solo despawnear si el active actual es el mismo que spawneamos
-            // (evita eliminar un holograma nuevo que reemplazó a este)
             ActiveHologram current = activeHolograms
                     .getOrDefault(uuid, Collections.emptyMap())
                     .get(data.getId());
@@ -163,7 +245,14 @@ public class HologramManager {
                 if (player.isOnline()) {
                     removeHologram(player, data.getId());
                 } else {
-                    activeHolograms.getOrDefault(uuid, Collections.emptyMap()).remove(data.getId());
+                    ActiveHologram removed = activeHolograms
+                            .getOrDefault(uuid, Collections.emptyMap())
+                            .remove(data.getId());
+                    if (removed != null) {
+                        List<Entity> entities = new ArrayList<>(removed.getEntities());
+                        entities.forEach(HologramUtil::removeEntitySafely);
+                        releaseTicketsFor(entities);
+                    }
                 }
             }
         }, (long) data.getDespawnAfter() * 20L);
@@ -179,29 +268,35 @@ public class HologramManager {
         ActiveHologram active = playerActives.remove(hologramId);
         if (active == null) return;
 
-        // Liberar chunk tickets antes de destruir
-        active.getRealEntities().forEach(as -> {
-            if (as != null && !as.isDead()) {
-                as.getLocation().getChunk().removePluginChunkTicket(plugin);
-            }
-        });
-
+        List<Entity> entities = new ArrayList<>(active.getEntities());
         HologramData data = hologramDefinitions.get(hologramId);
-        if (data != null) new RealHologram(plugin, player, data).destroy(active);
+
+        if (data != null) {
+            spawnHoloParticles(active, data, false);
+            Hologram hologram = createHologram(player, data);
+            if (active.getType() == ActiveHologram.Type.DISPLAY
+                    && data.getDespawnAnimation() == HologramData.SpawnAnimation.POP) {
+                hologram.destroySmooth(active);
+            } else {
+                hologram.destroy(active);
+            }
+        } else {
+            entities.forEach(HologramUtil::removeEntitySafely);
+        }
+
+        releaseTicketsFor(entities);
     }
 
     public void removeAllForPlayer(Player player) {
         UUID uuid = player.getUniqueId();
         Map<String, ActiveHologram> actives = activeHolograms.remove(uuid);
         if (actives != null) {
-            actives.values().forEach(active ->
-                    active.getRealEntities().forEach(as -> {
-                        if (as != null && !as.isDead()) {
-                            as.getLocation().getChunk().removePluginChunkTicket(plugin);
-                            as.remove();
-                        }
-                    })
-            );
+            actives.values().forEach(active -> {
+                List<Entity> entities = new ArrayList<>(active.getEntities());
+                // Misma lógica de destrucción segura que destroy() con fallback por UUID
+                entities.forEach(HologramUtil::removeEntitySafely);
+                releaseTicketsFor(entities);
+            });
         }
         clickCooldowns.remove(uuid);
 
@@ -217,28 +312,72 @@ public class HologramManager {
                 removeAllForPlayer(player);
             } else {
                 Map<String, ActiveHologram> actives = activeHolograms.remove(uuid);
-                if (actives != null) {
-                    actives.values().forEach(active ->
-                            active.getRealEntities().forEach(as -> {
-                                if (as != null && !as.isDead()) {
-                                    // Liberar chunk ticket antes de eliminar
-                                    try {
-                                        as.getLocation().getChunk()
-                                                .removePluginChunkTicket(plugin);
-                                    } catch (Exception ignored) {}
-                                    as.remove();
-                                }
-                            })
-                    );
-                }
+                if (actives == null) continue;
+                actives.values().forEach(active -> {
+                    List<Entity> entities = new ArrayList<>(active.getEntities());
+                    entities.forEach(HologramUtil::removeEntitySafely);
+                    releaseTicketsFor(entities);
+                });
             }
         }
         activeHolograms.clear();
     }
 
-    // ─── Bobbing ───────────────────────────────────────────────────────────────
+    // ─── Chunk tickets (con conteo para no liberar chunks aún en uso) ──────────
 
-    public void tickBobbing() {
+    private void addTickets(List<Entity> entities) {
+        for (Entity e : entities) {
+            if (e == null || e.isDead()) continue;
+            try {
+                e.getLocation().getChunk().addPluginChunkTicket(plugin);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * Libera los tickets de los chunks de las entidades eliminadas,
+     * PERO solo si ningún otro holograma activo sigue usando esos chunks.
+     * Antes se liberaban a ciegas — si dos hologramas compartían chunk,
+     * el chunk podía descargarse dejando entidades fantasma.
+     */
+    private void releaseTicketsFor(Collection<Entity> removedEntities) {
+        Set<Chunk> chunksToRelease = new HashSet<>();
+        for (Entity e : removedEntities) {
+            if (e == null) continue;
+            try {
+                chunksToRelease.add(e.getLocation().getChunk());
+            } catch (Exception ignored) {}
+        }
+        if (chunksToRelease.isEmpty()) return;
+
+        Set<Chunk> stillUsed = new HashSet<>();
+        for (Map<String, ActiveHologram> map : activeHolograms.values()) {
+            for (ActiveHologram a : map.values()) {
+                for (Entity e : a.getEntities()) {
+                    if (e == null || e.isDead()) continue;
+                    try {
+                        stillUsed.add(e.getLocation().getChunk());
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        for (Chunk chunk : chunksToRelease) {
+            if (!stillUsed.contains(chunk)) {
+                try {
+                    chunk.removePluginChunkTicket(plugin);
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    // ─── Tick de animaciones ───────────────────────────────────────────────────
+
+    /**
+     * Llamado cada tick. Limpia jugadores offline y delega las animaciones
+     * en cada implementación de Hologram (armor stand o display).
+     */
+    public void tickHolograms() {
         Iterator<Map.Entry<UUID, Map<String, ActiveHologram>>> playerIt =
                 activeHolograms.entrySet().iterator();
 
@@ -247,11 +386,11 @@ public class HologramManager {
             Player player = Bukkit.getPlayer(playerEntry.getKey());
 
             if (player == null || !player.isOnline()) {
-                playerEntry.getValue().forEach((hId, active) ->
-                        active.getRealEntities().forEach(as -> {
-                            if (as != null && !as.isDead()) as.remove();
-                        })
-                );
+                playerEntry.getValue().values().forEach(active -> {
+                    List<Entity> entities = new ArrayList<>(active.getEntities());
+                    entities.forEach(HologramUtil::removeEntitySafely);
+                    releaseTicketsFor(entities);
+                });
                 playerIt.remove();
                 continue;
             }
@@ -264,54 +403,59 @@ public class HologramManager {
                 ActiveHologram active = holoEntry.getValue();
                 HologramData data = hologramDefinitions.get(holoEntry.getKey());
 
-                if (data == null) continue;
-
-                boolean allDead = active.getRealEntities().stream()
-                        .allMatch(as -> as == null || as.isDead());
+                boolean allDead = active.getEntities().stream()
+                        .allMatch(e -> e == null || e.isDead());
                 if (allDead) { holoIt.remove(); continue; }
 
-                // Bobbing
-                boolean needsUpdate = false;
-                if (data.isBobbingEnabled()) {
-                    active.incrementPhase(data.getBobbingSpeed());
-                    needsUpdate = true;
-                }
+                if (data == null) continue;
 
-                // Rotación de cabeza
-                if (data.isSkullEnabled() && data.isSkullRotationEnabled()) {
-                    active.incrementYaw(data.getSkullRotationSpeed());
-                    needsUpdate = true;
-                }
-
-                if (needsUpdate) {
-                    double newY = active.getBaseY() +
-                            (data.isBobbingEnabled()
-                                    ? Math.sin(active.getBobbingPhase()) * data.getBobbingAmplitude()
-                                    : 0);
-                    new RealHologram(plugin, player, data).teleportEntities(active, newY);
-                }
+                createHologram(player, data).tick(active);
             }
+        }
+    }
+
+    // ─── Partículas ────────────────────────────────────────────────────────────
+
+    private void spawnHoloParticles(ActiveHologram active, HologramData data, boolean appear) {
+        boolean enabled = appear ? data.isAppearParticlesEnabled() : data.isDespawnParticlesEnabled();
+        if (!enabled) return;
+
+        String typeName = appear ? data.getAppearParticleType() : data.getDespawnParticleType();
+        int count = appear ? data.getAppearParticleCount() : data.getDespawnParticleCount();
+        double spread = appear ? data.getAppearParticleSpread() : data.getDespawnParticleSpread();
+        double speed = appear ? data.getAppearParticleSpeed() : data.getDespawnParticleSpeed();
+
+        try {
+            Particle particle = Particle.valueOf(typeName.toUpperCase());
+            Location center = active.getBaseLocation().clone();
+            int totalLines = Math.max(1, data.getLines().size());
+            center.add(0, ((totalLines - 1) * data.getLineSpacing()) / 2.0, 0);
+            center.getWorld().spawnParticle(particle, center, count, spread, spread, spread, speed);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid particle type '" + typeName
+                    + "' in hologram '" + data.getId()
+                    + "'. Use particle names that don't require extra data (avoid DUST, ITEM, BLOCK...).");
         }
     }
 
     // ─── Comandos / Efectos ────────────────────────────────────────────────────
 
     public void executeCommands(Player player, HologramData data) {
-        // Verificar cooldown de clic
-        if (isClickOnCooldown(player.getUniqueId(), data.getId())) return;
+        // Registrar el clic (el check de cooldown ahora se hace en claim(), ANTES de remover
+        // el holograma — así un clic en cooldown ya no pierde la recompensa)
+        recordClick(player.getUniqueId(), data.getId());
 
         // Verificar que el holograma ya no esté activo (fue removido en claim() antes de llegar aquí)
-        // Si por alguna razón sigue activo, no ejecutar
         if (activeHolograms
                 .getOrDefault(player.getUniqueId(), Collections.emptyMap())
                 .containsKey(data.getId())) return;
 
-        List<dev.rewardhologram.model.RewardEntry> rewards = data.getRewards();
+        List<RewardEntry> rewards = data.getRewards();
         int pick = data.getRewardPick();
 
         if (pick <= 0 || pick >= rewards.size()) {
             // Sin pick (o pick >= total): evaluar todas por su chance individual
-            for (dev.rewardhologram.model.RewardEntry reward : rewards) {
+            for (RewardEntry reward : rewards) {
                 if (reward.roll()) {
                     String parsed = reward.getCommand().replace("%player%", player.getName());
                     Bukkit.getScheduler().runTask(plugin,
@@ -320,8 +464,8 @@ public class HologramManager {
             }
         } else {
             // Con pick: mezclar la lista, tomar las primeras N y evaluarlas por su chance
-            List<dev.rewardhologram.model.RewardEntry> shuffled = new ArrayList<>(rewards);
-            java.util.Collections.shuffle(shuffled);
+            List<RewardEntry> shuffled = new ArrayList<>(rewards);
+            Collections.shuffle(shuffled);
             shuffled.stream().limit(pick).forEach(reward -> {
                 if (reward.roll()) {
                     String parsed = reward.getCommand().replace("%player%", player.getName());
@@ -384,67 +528,44 @@ public class HologramManager {
         }
     }
 
-    // ─── Getters ───────────────────────────────────────────────────────────────
+    // ─── Parsers ───────────────────────────────────────────────────────────────
 
-    public Collection<HologramData> getAllDefinitions() { return hologramDefinitions.values(); }
-    public HologramData getDefinition(String id) { return hologramDefinitions.get(id); }
-    public CooldownManager getCooldownManager() { return cooldownManager; }
-
-    /**
-     * Elimina todos los armor stands del plugin dentro del radio dado.
-     * Busca por PDC key directamente en el mundo, así atrapa también
-     * entidades huérfanas que no estén en el mapa activeHolograms.
-     * @return cantidad de armor stands eliminados
-     */
-    public int removeNear(org.bukkit.Location center, double radius) {
-        int removed = 0;
-        double radiusSq = radius * radius;
-
-        for (org.bukkit.entity.Entity entity : center.getWorld().getNearbyEntities(center, radius, radius, radius)) {
-            if (!(entity instanceof org.bukkit.entity.ArmorStand as)) continue;
-            if (entity.getLocation().distanceSquared(center) > radiusSq) continue;
-
-            String ownerStr = as.getPersistentDataContainer()
-                    .get(ownerKey, org.bukkit.persistence.PersistentDataType.STRING);
-            String hologramId = as.getPersistentDataContainer()
-                    .get(hologramIdKey, org.bukkit.persistence.PersistentDataType.STRING);
-
-            if (ownerStr == null || hologramId == null) continue;
-
-            // Eliminar del mapa activo si existe
-            try {
-                UUID ownerUuid = UUID.fromString(ownerStr);
-                Map<String, ActiveHologram> playerActives = activeHolograms.get(ownerUuid);
-                if (playerActives != null) playerActives.remove(hologramId);
-            } catch (IllegalArgumentException ignored) {}
-
-            as.remove();
-            removed++;
+    private HologramData.Renderer parseRenderer(String value) {
+        try {
+            HologramData.Renderer r = HologramData.Renderer.valueOf(value.toUpperCase());
+            // DEFAULT a nivel global no tiene sentido — caer a ARMOR_STAND
+            return r == HologramData.Renderer.DEFAULT ? HologramData.Renderer.ARMOR_STAND : r;
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid renderer '" + value + "', using ARMOR_STAND.");
+            return HologramData.Renderer.ARMOR_STAND;
         }
-
-        return removed;
     }
 
-    /**
-     * Devuelve una lista de info de hologramas activos:
-     * ownerName, hologramId, y la ubicación del primer armor stand.
-     */
-    public List<ActiveHologramInfo> getActiveList() {
-        List<ActiveHologramInfo> result = new ArrayList<>();
-        for (Map.Entry<UUID, Map<String, ActiveHologram>> playerEntry : activeHolograms.entrySet()) {
-            String ownerName = Bukkit.getOfflinePlayer(playerEntry.getKey()).getName();
-            if (ownerName == null) ownerName = playerEntry.getKey().toString().substring(0, 8);
-            for (Map.Entry<String, ActiveHologram> holoEntry : playerEntry.getValue().entrySet()) {
-                ActiveHologram active = holoEntry.getValue();
-                org.bukkit.Location loc = null;
-                if (!active.getRealEntities().isEmpty()) {
-                    org.bukkit.entity.ArmorStand as = active.getRealEntities().get(0);
-                    if (as != null && !as.isDead()) loc = as.getLocation();
-                }
-                result.add(new ActiveHologramInfo(ownerName, holoEntry.getKey(), loc));
-            }
+    private Display.Billboard parseBillboard(String value) {
+        try {
+            return Display.Billboard.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid billboard '" + value + "', using CENTER.");
+            return Display.Billboard.CENTER;
         }
-        return result;
+    }
+
+    private ChatColor parseChatColor(String value) {
+        try {
+            ChatColor c = ChatColor.valueOf(value.toUpperCase());
+            if (c.isColor()) return c;
+        } catch (IllegalArgumentException ignored) {}
+        plugin.getLogger().warning("Invalid glow color '" + value + "', using WHITE.");
+        return ChatColor.WHITE;
+    }
+
+    private HologramData.SpawnAnimation parseSpawnAnimation(String value) {
+        try {
+            return HologramData.SpawnAnimation.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid animation '" + value + "', using NONE.");
+            return HologramData.SpawnAnimation.NONE;
+        }
     }
 
     private HologramData.ClickType parseClickType(String value) {
@@ -464,29 +585,19 @@ public class HologramManager {
      *   rewards:
      *     - command: "give %player% diamond 1"
      *       chance: 50.0
-     *     - command: "give %player% gold_ingot 3"
-     *       chance: 100.0
      *
      * Formato legacy (lista simple, chance 100%):
      *   commands:
      *     - "give %player% diamond 1"
      */
-    private java.util.List<dev.rewardhologram.model.RewardEntry> parseRewards(
-            org.bukkit.configuration.ConfigurationSection h) {
+    private List<RewardEntry> parseRewards(ConfigurationSection h) {
+        List<RewardEntry> list = new ArrayList<>();
 
-        java.util.List<dev.rewardhologram.model.RewardEntry> list = new java.util.ArrayList<>();
-
-        // Formato nuevo con pick — rewards es una sección con pick y list:
-        //   rewards:
-        //     pick: 2
-        //     list:
-        //       - command: "..."
-        //         chance: 50.0
         String listKey = h.isList("rewards.list") ? "rewards.list" : "rewards";
 
         if (h.isList(listKey)) {
-            java.util.List<java.util.Map<?, ?>> rawList = h.getMapList(listKey);
-            for (java.util.Map<?, ?> map : rawList) {
+            List<Map<?, ?>> rawList = h.getMapList(listKey);
+            for (Map<?, ?> map : rawList) {
                 Object cmdObj = map.get("command");
                 if (cmdObj == null) continue;
                 String cmd = cmdObj.toString();
@@ -497,17 +608,83 @@ public class HologramManager {
                 if (chanceObj instanceof Number) {
                     chance = ((Number) chanceObj).doubleValue();
                 }
-                list.add(new dev.rewardhologram.model.RewardEntry(cmd, chance));
+                list.add(new RewardEntry(cmd, chance));
             }
         }
 
-        // Formato legacy — lista commands (chance 100%)
         if (list.isEmpty()) {
             for (String cmd : h.getStringList("commands")) {
-                list.add(new dev.rewardhologram.model.RewardEntry(cmd, 100.0));
+                list.add(new RewardEntry(cmd, 100.0));
             }
         }
 
         return list;
+    }
+
+    // ─── Getters / Utilidades admin ────────────────────────────────────────────
+
+    public Collection<HologramData> getAllDefinitions() { return hologramDefinitions.values(); }
+    public HologramData getDefinition(String id) { return hologramDefinitions.get(id); }
+    public CooldownManager getCooldownManager() { return cooldownManager; }
+
+    /**
+     * Elimina todas las entidades del plugin dentro del radio dado.
+     * Busca por PDC key directamente en el mundo, así atrapa también
+     * entidades huérfanas que no estén en el mapa activeHolograms.
+     * Soporta tanto armor stands como display entities.
+     * @return cantidad de entidades eliminadas
+     */
+    public int removeNear(Location center, double radius) {
+        int removed = 0;
+        double radiusSq = radius * radius;
+        List<Entity> toRemove = new ArrayList<>();
+
+        for (Entity entity : center.getWorld().getNearbyEntities(center, radius, radius, radius)) {
+            if (!(entity instanceof ArmorStand) && !(entity instanceof Display)) continue;
+            if (entity.getLocation().distanceSquared(center) > radiusSq) continue;
+
+            String ownerStr = entity.getPersistentDataContainer()
+                    .get(ownerKey, org.bukkit.persistence.PersistentDataType.STRING);
+            String hologramId = entity.getPersistentDataContainer()
+                    .get(hologramIdKey, org.bukkit.persistence.PersistentDataType.STRING);
+
+            if (ownerStr == null || hologramId == null) continue;
+
+            // Eliminar del mapa activo si existe
+            try {
+                UUID ownerUuid = UUID.fromString(ownerStr);
+                Map<String, ActiveHologram> playerActives = activeHolograms.get(ownerUuid);
+                if (playerActives != null) playerActives.remove(hologramId);
+            } catch (IllegalArgumentException ignored) {}
+
+            toRemove.add(entity);
+            removed++;
+        }
+
+        toRemove.forEach(HologramUtil::removeEntitySafely);
+        releaseTicketsFor(toRemove);
+
+        return removed;
+    }
+
+    /**
+     * Devuelve una lista de info de hologramas activos:
+     * ownerName, hologramId, y la ubicación de la primera entidad.
+     */
+    public List<ActiveHologramInfo> getActiveList() {
+        List<ActiveHologramInfo> result = new ArrayList<>();
+        for (Map.Entry<UUID, Map<String, ActiveHologram>> playerEntry : activeHolograms.entrySet()) {
+            String ownerName = Bukkit.getOfflinePlayer(playerEntry.getKey()).getName();
+            if (ownerName == null) ownerName = playerEntry.getKey().toString().substring(0, 8);
+            for (Map.Entry<String, ActiveHologram> holoEntry : playerEntry.getValue().entrySet()) {
+                ActiveHologram active = holoEntry.getValue();
+                Location loc = null;
+                for (Entity e : active.getEntities()) {
+                    if (e != null && !e.isDead()) { loc = e.getLocation(); break; }
+                }
+                result.add(new ActiveHologramInfo(ownerName, holoEntry.getKey(), loc));
+            }
+        }
+        return result;
     }
 }
