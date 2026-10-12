@@ -10,6 +10,8 @@ import dev.rewardhologram.model.ActiveHologramInfo;
 import dev.rewardhologram.model.HologramData;
 import dev.rewardhologram.model.RewardEntry;
 import dev.rewardhologram.util.LineParser;
+import io.papermc.paper.registry.RegistryAccess;
+import io.papermc.paper.registry.RegistryKey;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
@@ -30,13 +32,12 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 public class HologramManager {
-
-    private static final String GLOW_TEAM_PREFIX = "rh_glow_";
 
     private final RewardHologramPlugin plugin;
     private final org.bukkit.NamespacedKey ownerKey;
@@ -93,7 +94,7 @@ public class HologramManager {
             try {
                 var sb = Bukkit.getScoreboardManager().getMainScoreboard();
                 for (Team team : sb.getTeams()) {
-                    if (team.getName().startsWith(GLOW_TEAM_PREFIX)) {
+                    if (team.getName().startsWith(HologramUtil.GLOW_TEAM_PREFIX)) {
                         team.removeEntry(e.getUniqueId().toString());
                     }
                 }
@@ -476,6 +477,46 @@ public class HologramManager {
         }
     }
 
+    // ─── Sonidos ───────────────────────────────────────────────────────────────
+
+    /**
+     * Resuelve un nombre de sonido vía el registry de Paper.
+     * Sound.valueOf(String) está deprecado (y marcado para remoción) en Paper
+     * reciente — el registry es la vía soportada.
+     * Acepta tanto "ENTITY_PLAYER_LEVELUP" como "minecraft:entity_player_levelup".
+     * Devuelve null (con warning en consola) si el nombre es inválido.
+     */
+    private org.bukkit.Sound parseSound(String name, String hologramId) {
+        String normalized = name.trim().toLowerCase(Locale.ROOT);
+
+        org.bukkit.NamespacedKey key = normalized.contains(":")
+                ? org.bukkit.NamespacedKey.fromString(normalized)
+                : org.bukkit.NamespacedKey.minecraft(normalized);
+
+        if (key == null) {
+            plugin.getLogger().warning("Invalid sound '" + name
+                    + "' in hologram '" + hologramId + "'.");
+            return null;
+        }
+
+        org.bukkit.Sound sound = RegistryAccess.registryAccess()
+                .getRegistry(RegistryKey.SOUND_EVENT)
+                .get(key);
+
+        if (sound == null) {
+            plugin.getLogger().warning("Invalid sound '" + name
+                    + "' in hologram '" + hologramId + "'.");
+        }
+        return sound;
+    }
+
+    private void playSound(Player player, String soundName, float volume,
+                           float pitch, String hologramId) {
+        org.bukkit.Sound sound = parseSound(soundName, hologramId);
+        if (sound == null) return;
+        player.playSound(player.getLocation(), sound, volume, pitch);
+    }
+
     // ─── Comandos / Efectos ────────────────────────────────────────────────────
 
     public void executeCommands(Player player, HologramData data) {
@@ -536,14 +577,8 @@ public class HologramManager {
         }
 
         if (data.isSoundEnabled()) {
-            try {
-                org.bukkit.Sound sound = org.bukkit.Sound.valueOf(data.getSoundName());
-                player.playSound(player.getLocation(), sound,
-                        data.getSoundVolume(), data.getSoundPitch());
-            } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Invalid sound in hologram '"
-                        + data.getId() + "': " + data.getSoundName());
-            }
+            playSound(player, data.getSoundName(),
+                    data.getSoundVolume(), data.getSoundPitch(), data.getId());
         }
     }
 
@@ -555,14 +590,8 @@ public class HologramManager {
         }
 
         if (data.isClaimSoundEnabled()) {
-            try {
-                org.bukkit.Sound sound = org.bukkit.Sound.valueOf(data.getClaimSoundName());
-                player.playSound(player.getLocation(), sound,
-                        data.getClaimSoundVolume(), data.getClaimSoundPitch());
-            } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Invalid claim sound in hologram '"
-                        + data.getId() + "': " + data.getClaimSoundName());
-            }
+            playSound(player, data.getClaimSoundName(),
+                    data.getClaimSoundVolume(), data.getClaimSoundPitch(), data.getId());
         }
     }
 
