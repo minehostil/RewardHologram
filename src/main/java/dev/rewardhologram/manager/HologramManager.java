@@ -326,6 +326,15 @@ public class HologramManager {
 
         releaseTicketsFor(entities);
     }
+    /**
+     * True si el jugador tiene al menos un holograma activo.
+     * Chequeo barato (map lookup) para el listener antes del ray trace
+     * del clic izquierdo.
+     */
+    public boolean hasActiveHolograms(UUID uuid) {
+        Map<String, ActiveHologram> map = activeHolograms.get(uuid);
+        return map != null && !map.isEmpty();
+    }
 
     public void removeAllForPlayer(Player player) {
         UUID uuid = player.getUniqueId();
