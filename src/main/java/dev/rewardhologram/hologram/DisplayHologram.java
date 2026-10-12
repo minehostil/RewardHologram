@@ -9,9 +9,9 @@ import dev.rewardhologram.util.SkullUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
-import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Interaction;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
@@ -29,11 +29,12 @@ import java.util.Map;
  * Holograma basado en Display Entities (1.19.4+) con un proxy de interacción.
  *
  * Visual: TextDisplay/ItemDisplay — billboard, scale, glow, animaciones avanzadas.
- * Interacción: un ArmorStand invisible (pickable por el cliente) centrado en el
- * holograma. El cliente Java NUNCA envía paquetes de interacción hacia displays
- * (no son "pickable") y con la mano vacía apuntando al aire no envía NINGÚN
- * paquete — el armor stand proxy es la única vía fiable para capturar el clic
- * derecho sin item en la mano.
+ * Interacción: una entidad Interaction con hitbox configurable envolviendo todo
+ * el holograma. Las displays NO son "pickable" (el cliente nunca les envía
+ * paquetes de interacción, y con la mano vacía apuntando al aire no envía
+ * NINGÚN paquete) — la Interaction es la zona clicable: el cliente le envía
+ * INTERACT incluso sin item, y al no tener equipamiento es inmune al bug de
+ * equipar armaduras/elytras/heads que tenían los proxies de armor stand.
  */
 public class DisplayHologram implements Hologram {
 
@@ -41,12 +42,11 @@ public class DisplayHologram implements Hologram {
     private static final Quaternionf IDENTITY_ROTATION = new Quaternionf();
     private static final Vector3f NEAR_ZERO_SCALE = new Vector3f(0.0001f, 0.0001f, 0.0001f);
 
-    /**
-     * Mitad de la altura de la hitbox de un armor stand normal (~1.975).
-     * El proxy se posiciona restando esto a la Y del centro deseado,
-     * así su hitbox queda centrada en el holograma.
-     */
-    private static final double PROXY_HALF_HEIGHT = 0.9875;
+    /** Ancho de la hitbox de interacción — cubre el texto, que es más ancho que un bloque. */
+    private static final float PROXY_WIDTH = 1.6f;
+
+    /** Extra vertical sobre la altura del holograma para no dejar zonas sin cubrir. */
+    private static final double PROXY_EXTRA_HEIGHT = 0.8;
 
     /**
      * Ticks de gracia antes de animar el pop-in. La interpolación de displays
@@ -96,12 +96,12 @@ public class DisplayHologram implements Hologram {
             finalTransforms.put(line, staticLineTransform(i, 1.0f));
         }
 
-        // Proxy de interacción — armor stand invisible con hitbox real.
-        // Centrado en el holograma (incluida la skull si existe) para que su
-        // hitbox cubra el máximo de área clickeable.
+        // Proxy de interacción — Interaction entity con hitbox que envuelve
+        // todo el holograma (texto + skull)
         double centerY = computeInteractionCenterY(totalLines, spacing);
-        ArmorStand proxy = spawnInteractionProxy(
-                base.clone().add(0, centerY - PROXY_HALF_HEIGHT, 0));
+        float proxyHeight = (float) (centerY * 2 + PROXY_EXTRA_HEIGHT);
+        Interaction proxy = spawnInteractionProxy(
+                base.clone().add(0, centerY, 0), proxyHeight);
         entities.add(proxy);
 
         entities.forEach(e -> HologramUtil.tagEntity(e, plugin, player, data.getId()));
@@ -118,8 +118,8 @@ public class DisplayHologram implements Hologram {
     }
 
     /**
-     * Y del centro de interacción: punto medio entre la parte baja (primera
-     * línea) y la parte alta (skull si existe, última línea si no).
+     * Y del centro de interacción: punto medio entre la base (Y 0 del holograma)
+     * y la parte alta (skull si existe, última línea si no).
      */
     private double computeInteractionCenterY(int totalLines, double spacing) {
         double top = data.isSkullEnabled()
@@ -209,14 +209,16 @@ public class DisplayHologram implements Hologram {
             }
         }
 
-        // El proxy de interacción sigue al holograma (mismo bobbing) para que
-        // su hitbox clickeable acompañe al visual en todo momento
+        // El proxy de interacción sigue al holograma (mismo bobbing). El anclaje
+        // vertical de la Interaction varía según versión — en vez de asumirlo,
+        // medimos el centro real de su hitbox y corregimos el delta cada tick.
+        double targetCenter = newY + computeInteractionCenterY(totalLines, spacing);
         for (Entity e : active.getEntities()) {
-            if (e instanceof ArmorStand proxy && !proxy.isDead()) {
+            if (e instanceof Interaction proxy && !proxy.isDead()) {
                 Location loc = proxy.getLocation();
-                double centerY = computeInteractionCenterY(totalLines, spacing);
+                double currentCenter = proxy.getBoundingBox().getCenterY();
                 proxy.teleport(new Location(loc.getWorld(), loc.getX(),
-                        newY + centerY - PROXY_HALF_HEIGHT, loc.getZ()));
+                        loc.getY() + (targetCenter - currentCenter), loc.getZ()));
             }
         }
     }
@@ -250,13 +252,11 @@ public class DisplayHologram implements Hologram {
             e.getPersistentDataContainer().remove(plugin.getOwnerKey());
             e.getPersistentDataContainer().remove(plugin.getHologramIdKey());
 
-            // El proxy no anima — fuera de inmediato
-            if (e instanceof ArmorStand) {
+            // Solo las displays animan — el proxy (Interaction) sale de inmediato
+            if (!(e instanceof Display d) || d.isDead()) {
                 HologramUtil.removeEntitySafely(e);
                 continue;
             }
-
-            if (!(e instanceof Display d) || d.isDead()) continue;
 
             unregisterGlow(d);
 
@@ -309,29 +309,27 @@ public class DisplayHologram implements Hologram {
     }
 
     /**
-     * Armor stand invisible que actúa como proxy de interacción del holograma.
+     * Entidad Interaction como proxy de interacción del holograma.
      *
-     * CRÍTICO: setSmall(false) y setMarker(false). Con marker=true la hitbox es
-     * de 0 bloques y el cliente no puede apuntarle; con small=true la hitbox se
-     * reduce a menos de la mitad. La hitbox completa (~0.5 × 1.975) es la zona
-     * de clic derecho SIN item en la mano — la única que existe para displays.
+     * ¿Por qué Interaction y no armor stand?
+     *  1. Hitbox configurable (ancho/alto) — cubre TODO el holograma, no solo
+     *     el centro. El cliente apunta a ella desde cualquier parte del texto.
+     *  2. Es "pickable": el cliente envía INTERACT incluso con la mano vacía —
+     *     el caso que fallaba con el armor stand.
+     *  3. No tiene equipamiento — es imposible equiparle armaduras, elytras
+     *     o heads (el bug del proxy anterior).
+     *  4. No renderiza nada y no dispara PlayerArmorStandManipulateEvent.
      *
-     * Sin glow a propósito: el outline del glow en un armor stand invisible
-     * dibuja el contorno de su hitbox (un paralelepípedo), arruinando el glow
-     * del texto.
+     * setResponsive(true) hace que el cliente muestre el swing del brazo al
+     * apuntarla — feedback visual de que es clicable.
      */
-    private ArmorStand spawnInteractionProxy(Location loc) {
-        return loc.getWorld().spawn(loc, ArmorStand.class, as -> {
-            as.setInvisible(true);
-            as.setGravity(false);
-            as.setSmall(false);
-            as.setMarker(false);
-            as.setCollidable(false);
-            as.setInvulnerable(true);
-            as.setCanPickupItems(false);
-            as.setArms(false);
-            as.setBasePlate(false);
-            as.setPersistent(false);
+    private Interaction spawnInteractionProxy(Location loc, float height) {
+        return loc.getWorld().spawn(loc, Interaction.class, i -> {
+            i.setInteractionWidth(PROXY_WIDTH);
+            i.setInteractionHeight(height);
+            i.setResponsive(true);
+            i.setInvulnerable(true);
+            i.setPersistent(false);
         });
     }
 
