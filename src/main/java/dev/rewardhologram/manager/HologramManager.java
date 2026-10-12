@@ -9,6 +9,7 @@ import dev.rewardhologram.model.ActiveHologram;
 import dev.rewardhologram.model.ActiveHologramInfo;
 import dev.rewardhologram.model.HologramData;
 import dev.rewardhologram.model.RewardEntry;
+import dev.rewardhologram.util.LineParser;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
@@ -19,6 +20,7 @@ import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.scoreboard.Team;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -33,6 +35,8 @@ import java.util.Set;
 import java.util.UUID;
 
 public class HologramManager {
+
+    private static final String GLOW_TEAM_PREFIX = "rh_glow_";
 
     private final RewardHologramPlugin plugin;
     private final org.bukkit.NamespacedKey ownerKey;
@@ -64,6 +68,40 @@ public class HologramManager {
                 : new RealHologram(plugin, player, data);
     }
 
+    /**
+     * Elimina un holograma activo usando la definición de SU PROPIO id.
+     * Importante tras un reload: el holograma activo pudo haberse creado
+     * con un renderer distinto al que tiene ahora la nueva definición.
+     */
+    private void destroyActive(Player player, ActiveHologram active) {
+        HologramData def = hologramDefinitions.get(active.getHologramId());
+        if (def != null) {
+            createHologram(player, def).destroy(active);
+        } else {
+            active.getEntities().forEach(this::cleanupEntity);
+        }
+    }
+
+    /**
+     * Eliminación forzada de una entidad: limpia las entradas de glow
+     * (si es Display) y luego la remueve con el fallback por UUID.
+     * Usado en las vías donde no hay definición disponible o el dueño
+     * está offline (quit, cambio de mundo, removeNear, removeAll...).
+     */
+    private void cleanupEntity(Entity e) {
+        if (e instanceof Display) {
+            try {
+                var sb = Bukkit.getScoreboardManager().getMainScoreboard();
+                for (Team team : sb.getTeams()) {
+                    if (team.getName().startsWith(GLOW_TEAM_PREFIX)) {
+                        team.removeEntry(e.getUniqueId().toString());
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        HologramUtil.removeEntitySafely(e);
+    }
+
     // ─── Config ────────────────────────────────────────────────────────────────
 
     public void loadConfig() {
@@ -75,12 +113,11 @@ public class HologramManager {
             ConfigurationSection h = section.getConfigurationSection(id);
             if (h == null) continue;
 
-            // Lines soporta dos formatos mezclables:
-            //   - "texto simple"                    (escala 1.0)
-            //   - { text: "...", scale: 1.3 }       (escala personalizada, DISPLAY)
+            // Cada línea es un string que puede incluir el placeholder interno
+            // {line_scale:X} — se extrae y se elimina del texto en todos los renderers.
             List<String> lines = new ArrayList<>();
             List<Double> lineScales = new ArrayList<>();
-            parseLines(h, lines, lineScales);
+            parseLines(h, id, lines, lineScales);
 
             hologramDefinitions.put(id, HologramData.builder(id)
                     .chance(h.getDouble("chance", 25.0))
@@ -163,8 +200,9 @@ public class HologramManager {
     private final Map<UUID, Map<String, Long>> clickCooldowns = new HashMap<>();
 
     /**
-     * Solo verifica — SIN efectos secundarios (antes registraba el clic aquí,
-     * lo que podía hacer que executeCommands rechazara un clic válido).
+     * Solo verifica — SIN efectos secundarios. El registro del clic ocurre en
+     * executeCommands() DESPUÉS de pasar el check, así un clic válido nunca
+     * es rechazado por su propio registro.
      */
     public boolean isClickOnCooldown(UUID uuid, String hologramId) {
         long cooldownMs = plugin.getConfig().getLong("settings.click-cooldown-ms", 500L);
@@ -201,7 +239,7 @@ public class HologramManager {
                 ActiveHologram removed = playerActives.remove(entry.getKey());
                 if (removed == null) continue;
                 List<Entity> oldEntities = new ArrayList<>(removed.getEntities());
-                createHologram(player, data).destroy(removed);
+                destroyActive(player, removed);
                 releaseTicketsFor(oldEntities);
             }
             playerActives.clear();
@@ -218,7 +256,7 @@ public class HologramManager {
         if (playerActives != null && playerActives.containsKey(data.getId())) {
             ActiveHologram existing = playerActives.remove(data.getId());
             List<Entity> oldEntities = new ArrayList<>(existing.getEntities());
-            createHologram(player, data).destroy(existing);
+            destroyActive(player, existing);
             releaseTicketsFor(oldEntities);
         }
 
@@ -245,12 +283,13 @@ public class HologramManager {
                 if (player.isOnline()) {
                     removeHologram(player, data.getId());
                 } else {
+                    // Dueño offline: eliminación forzada con limpieza de glow y tickets
                     ActiveHologram removed = activeHolograms
                             .getOrDefault(uuid, Collections.emptyMap())
                             .remove(data.getId());
                     if (removed != null) {
                         List<Entity> entities = new ArrayList<>(removed.getEntities());
-                        entities.forEach(HologramUtil::removeEntitySafely);
+                        entities.forEach(this::cleanupEntity);
                         releaseTicketsFor(entities);
                     }
                 }
@@ -281,7 +320,7 @@ public class HologramManager {
                 hologram.destroy(active);
             }
         } else {
-            entities.forEach(HologramUtil::removeEntitySafely);
+            entities.forEach(this::cleanupEntity);
         }
 
         releaseTicketsFor(entities);
@@ -293,8 +332,7 @@ public class HologramManager {
         if (actives != null) {
             actives.values().forEach(active -> {
                 List<Entity> entities = new ArrayList<>(active.getEntities());
-                // Misma lógica de destrucción segura que destroy() con fallback por UUID
-                entities.forEach(HologramUtil::removeEntitySafely);
+                entities.forEach(this::cleanupEntity);
                 releaseTicketsFor(entities);
             });
         }
@@ -315,7 +353,7 @@ public class HologramManager {
                 if (actives == null) continue;
                 actives.values().forEach(active -> {
                     List<Entity> entities = new ArrayList<>(active.getEntities());
-                    entities.forEach(HologramUtil::removeEntitySafely);
+                    entities.forEach(this::cleanupEntity);
                     releaseTicketsFor(entities);
                 });
             }
@@ -388,7 +426,7 @@ public class HologramManager {
             if (player == null || !player.isOnline()) {
                 playerEntry.getValue().values().forEach(active -> {
                     List<Entity> entities = new ArrayList<>(active.getEntities());
-                    entities.forEach(HologramUtil::removeEntitySafely);
+                    entities.forEach(this::cleanupEntity);
                     releaseTicketsFor(entities);
                 });
                 playerIt.remove();
@@ -441,8 +479,8 @@ public class HologramManager {
     // ─── Comandos / Efectos ────────────────────────────────────────────────────
 
     public void executeCommands(Player player, HologramData data) {
-        // Registrar el clic (el check de cooldown ahora se hace en claim(), ANTES de remover
-        // el holograma — así un clic en cooldown ya no pierde la recompensa)
+        // Registrar el clic (el check de cooldown se hizo en claim(), ANTES de remover
+        // el holograma — así un clic válido nunca pierde la recompensa)
         recordClick(player.getUniqueId(), data.getId());
 
         // Verificar que el holograma ya no esté activo (fue removido en claim() antes de llegar aquí)
@@ -578,6 +616,21 @@ public class HologramManager {
     }
 
     /**
+     * Lee las líneas del holograma. Cada línea es un string que puede incluir
+     * el placeholder interno {line_scale:X} para escala por línea (solo DISPLAY).
+     * El placeholder se elimina del texto en TODOS los renderers — con
+     * ARMOR_STAND la escala se ignora, pero el placeholder no aparece jamás.
+     */
+    private void parseLines(ConfigurationSection h, String id,
+                            List<String> lines, List<Double> scales) {
+        for (String raw : h.getStringList("lines")) {
+            LineParser.ParsedLine parsed = LineParser.parse(raw, plugin.getLogger(), id);
+            lines.add(parsed.text());
+            scales.add(parsed.scale());
+        }
+    }
+
+    /**
      * Lee la sección rewards del config.
      * Soporta dos formatos:
      *
@@ -661,7 +714,7 @@ public class HologramManager {
             removed++;
         }
 
-        toRemove.forEach(HologramUtil::removeEntitySafely);
+        toRemove.forEach(this::cleanupEntity);
         releaseTicketsFor(toRemove);
 
         return removed;
