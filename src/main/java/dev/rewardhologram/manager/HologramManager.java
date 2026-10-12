@@ -340,6 +340,17 @@ public class HologramManager {
         Map<String, ActiveHologram> map = activeHolograms.get(uuid);
         return map != null && !map.isEmpty();
     }
+    /**
+     * True si el jugador tiene activo el holograma con el ID dado.
+     * Usado por el listener en claim(): garantiza que el holograma aún existe
+     * antes de removerlo y ejecutar recompensas — sin este check, un segundo
+     * clic (p.ej. contra el proxy durante el pop-out) duplicaría recompensas.
+     */
+    public boolean isActiveHologram(UUID uuid, String hologramId) {
+        return activeHolograms
+                .getOrDefault(uuid, Collections.emptyMap())
+                .containsKey(hologramId);
+    }
 
     // ─── Ray tracing de clics (DISPLAY) ────────────────────────────────────────
 
